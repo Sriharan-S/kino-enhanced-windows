@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kino.App/Kino.App.csproj" />
+  </Folder>
+</Solution>
