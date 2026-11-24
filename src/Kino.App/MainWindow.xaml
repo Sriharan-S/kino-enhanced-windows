@@ -7,29 +7,49 @@
 
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The native video window is positioned exactly over this element. -->
-        <Border x:Name="VideoArea" Grid.Row="0" Background="Black" />
+        <!-- Screen bar: create / join (temporary until the lobby UI lands) -->
+        <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="110" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TheatreBox" Grid.Column="0" PlaceholderText="Theatre URL" />
+            <TextBox x:Name="NameBox" Grid.Column="1" PlaceholderText="Your name" MaxLength="32" />
+            <Button x:Name="CreateButton" Grid.Column="2" Content="Create screen" Click="OnCreateClick" />
+            <TextBox x:Name="CodeBox" Grid.Column="3" PlaceholderText="Code" MaxLength="8" CharacterCasing="Upper" />
+            <Button x:Name="JoinButton" Grid.Column="4" Content="Join" Click="OnJoinClick" />
+            <TextBlock x:Name="SessionText" Grid.Column="5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Text="Not in a screen" Opacity="0.8" />
+        </Grid>
 
-        <!-- Overlay test: a windowed popup renders in its own HWND, so it can sit above the video. -->
+        <!-- The native video window is positioned exactly over this element. -->
+        <Border x:Name="VideoArea" Grid.Row="1" Background="Black" />
+
+        <!-- Sync overlay: a windowed popup renders in its own HWND, so it sits above the video. -->
         <Popup x:Name="OverlayPopup" ShouldConstrainToRootBounds="False">
             <Border Background="#B0202020" CornerRadius="8" Padding="12,8">
                 <StackPanel Spacing="2">
-                    <TextBlock Text="Kino overlay" Foreground="White" FontWeight="SemiBold" />
-                    <TextBlock x:Name="OverlayText" Text="Drawn above the video" Foreground="#DDFFFFFF" />
+                    <TextBlock x:Name="OverlayTitle" Text="Kino" Foreground="White" FontWeight="SemiBold" />
+                    <TextBlock x:Name="OverlayText" Text="Open a file or join a screen" Foreground="#DDFFFFFF"
+                               FontFamily="Consolas" />
                 </StackPanel>
             </Border>
         </Popup>
 
-        <Grid Grid.Row="1" Padding="12,8" ColumnSpacing="10">
+        <Grid Grid.Row="2" Padding="12,8" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -38,21 +58,16 @@
             <Button x:Name="OpenButton" Grid.Column="0" Content="Open…" Click="OnOpenClick" />
             <Button x:Name="PlayPauseButton" Grid.Column="1" Content="Play" Click="OnPlayPauseClick" MinWidth="72" />
             <Slider x:Name="SeekSlider" Grid.Column="2" VerticalAlignment="Center" Minimum="0" Maximum="1"
-                    StepFrequency="0.1" IsThumbToolTipEnabled="False" ValueChanged="OnSeekChanged" />
+                    StepFrequency="0.1" IsThumbToolTipEnabled="False"
+                    PointerCaptureLost="OnSeekCommitted" KeyUp="OnSeekKey" />
             <TextBlock x:Name="TimeText" Grid.Column="3" VerticalAlignment="Center" Text="00:00 / 00:00"
                        FontFamily="Consolas" />
             <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="Speed" VerticalAlignment="Center" />
-                <Slider x:Name="SpeedSlider" Width="120" Minimum="0.90" Maximum="1.10" StepFrequency="0.005"
-                        Value="1.0" IsThumbToolTipEnabled="False" ValueChanged="OnSpeedChanged" />
-                <TextBlock x:Name="SpeedText" Text="1.000×" FontFamily="Consolas" VerticalAlignment="Center" />
-            </StackPanel>
-            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <TextBlock Text="Vol" VerticalAlignment="Center" />
                 <Slider x:Name="VolumeSlider" Width="90" Minimum="0" Maximum="200" Value="100"
                         IsThumbToolTipEnabled="False" ValueChanged="OnVolumeChanged" />
             </StackPanel>
-            <ToggleButton x:Name="OverlayToggle" Grid.Column="6" Content="Overlay" IsChecked="True"
+            <ToggleButton x:Name="OverlayToggle" Grid.Column="5" Content="Overlay" IsChecked="True"
                           Click="OnOverlayToggle" />
         </Grid>
     </Grid>

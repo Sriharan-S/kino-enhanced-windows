@@ -13,11 +13,8 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        // Optional first command-line argument: a file path or URL to open on start (useful for testing).
-        var cli = Environment.GetCommandLineArgs();
-        string? startMedia = cli.Length > 1 ? cli[1] : null;
-
-        _window = new MainWindow(startMedia);
+        var options = LaunchOptions.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
+        _window = new MainWindow(options);
         _window.Activate();
     }
 }

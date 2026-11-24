@@ -26,14 +26,10 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
   </ItemGroup>
 
-  <!-- libmpv is fetched by tools/Fetch-LibMpv.ps1 into libs/mpv (not committed) -->
   <ItemGroup>
-    <None Include="..\..\libs\mpv\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <ProjectReference Include="..\Kino.Player\Kino.Player.csproj" />
+    <ProjectReference Include="..\Kino.Core\Kino.Core.csproj" />
   </ItemGroup>
 
-  <Target Name="CheckLibMpv" BeforeTargets="Build">
-    <Error Condition="!Exists('..\..\libs\mpv\libmpv-2.dll')"
-           Text="libmpv-2.dll not found. Run tools\Fetch-LibMpv.ps1 first." />
-  </Target>
 
 </Project>

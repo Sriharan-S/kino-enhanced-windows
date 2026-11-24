@@ -1,5 +1,26 @@
 <Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
   <Folder Name="/src/">
-    <Project Path="src/Kino.App/Kino.App.csproj" />
+    <Project Path="src/Kino.App/Kino.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/Kino.Core/Kino.Core.csproj">
+      <Platform Project="Any CPU" />
+    </Project>
+    <Project Path="src/Kino.Player/Kino.Player.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kino.Core.Tests/Kino.Core.Tests.csproj">
+      <Platform Project="Any CPU" />
+    </Project>
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Kino.TestMedia/Kino.TestMedia.csproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
 </Solution>

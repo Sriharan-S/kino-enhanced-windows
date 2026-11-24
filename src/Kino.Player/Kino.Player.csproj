@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- libmpv bindings and the Win32 video host. No UI framework dependency. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>Kino.Player</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kino.Core\Kino.Core.csproj" />
+  </ItemGroup>
+
+  <!-- libmpv is fetched by tools/Fetch-LibMpv.ps1 into libs/mpv (not committed) -->
+  <ItemGroup>
+    <None Include="..\..\libs\mpv\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="CheckLibMpv" BeforeTargets="Build">
+    <Error Condition="!Exists('..\..\libs\mpv\libmpv-2.dll')"
+           Text="libmpv-2.dll not found. Run tools\Fetch-LibMpv.ps1 first." />
+  </Target>
+
+</Project>

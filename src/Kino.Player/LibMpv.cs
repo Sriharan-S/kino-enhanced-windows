@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Kino.Player;
 
 /// <summary>Raw P/Invoke bindings for the subset of the libmpv client API Kino uses.</summary>
-internal static partial class LibMpv
+public static partial class LibMpv
 {
     private const string Dll = "libmpv-2.dll";
 

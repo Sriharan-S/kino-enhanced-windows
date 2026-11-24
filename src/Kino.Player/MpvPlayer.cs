@@ -1,18 +1,30 @@
 using System.Runtime.InteropServices;
+using Kino.Core.Sync;
 
 namespace Kino.Player;
 
 /// <summary>
 /// Managed wrapper around one libmpv instance that renders into a native window (HWND).
 /// Property changes are raised on the mpv event thread; callers must marshal to the UI thread.
+/// libmpv's client API is thread-safe, so <see cref="IPlayback"/> members may be called from any thread.
 /// </summary>
-public sealed class MpvPlayer : IDisposable
+public sealed class MpvPlayer : IDisposable, IPlayback
 {
     private enum Prop : ulong { TimePos = 1, Duration, Pause, PausedForCache, Speed, EofReached }
 
     private IntPtr _ctx;
     private readonly Thread _eventThread;
     private volatile bool _stopping;
+    private volatile bool _paused = true;
+    private volatile bool _buffering;
+
+    public double Duration { get; private set; } = double.NaN;
+
+    // ---- IPlayback ------------------------------------------------------------------------
+    double? IPlayback.Position => GetPosition() is var p && double.IsFinite(p) ? p : null;
+    bool IPlayback.IsPaused => _paused;
+    bool IPlayback.IsBuffering => _buffering;
+    void IPlayback.Seek(double seconds) => SeekAbsolute(seconds);
 
     public event Action<double>? PositionChanged;
     public event Action<double>? DurationChanged;
@@ -60,6 +72,7 @@ public sealed class MpvPlayer : IDisposable
 
     public void SetPaused(bool paused)
     {
+        _paused = paused; // optimistic; the observed property confirms it shortly after
         int flag = paused ? 1 : 0;
         LibMpv.SetProperty(_ctx, "pause", LibMpv.Format.Flag, ref flag);
     }
@@ -132,10 +145,10 @@ public sealed class MpvPlayer : IDisposable
         switch (id)
         {
             case Prop.TimePos: PositionChanged?.Invoke(ReadDouble(p.Data)); break;
-            case Prop.Duration: DurationChanged?.Invoke(ReadDouble(p.Data)); break;
+            case Prop.Duration: Duration = ReadDouble(p.Data); DurationChanged?.Invoke(Duration); break;
             case Prop.Speed: SpeedChanged?.Invoke(ReadDouble(p.Data)); break;
-            case Prop.Pause: PausedChanged?.Invoke(Marshal.ReadInt32(p.Data) != 0); break;
-            case Prop.PausedForCache: BufferingChanged?.Invoke(Marshal.ReadInt32(p.Data) != 0); break;
+            case Prop.Pause: _paused = Marshal.ReadInt32(p.Data) != 0; PausedChanged?.Invoke(_paused); break;
+            case Prop.PausedForCache: _buffering = Marshal.ReadInt32(p.Data) != 0; BufferingChanged?.Invoke(_buffering); break;
             case Prop.EofReached: EofChanged?.Invoke(Marshal.ReadInt32(p.Data) != 0); break;
         }
     }
