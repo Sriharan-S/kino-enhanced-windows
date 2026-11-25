@@ -3,6 +3,7 @@
     x:Class="Kino.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Kino"
     Title="Kino">
 
     <Grid x:Name="Root">
@@ -12,28 +13,146 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Screen bar: theatre for new screens, create / join by code (temporary until the lobby UI lands) -->
+        <!-- Top bar -->
         <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
-                <ColumnDefinition Width="140" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="110" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="160" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ComboBox x:Name="TheatrePicker" Grid.Column="0" HorizontalAlignment="Stretch"
-                      PlaceholderText="Loading theatres…" IsEnabled="False" />
+            <Button x:Name="LobbyButton" Grid.Column="0" Content="Lobby" Click="OnLobbyButtonClick" MinWidth="110" />
             <TextBox x:Name="NameBox" Grid.Column="1" PlaceholderText="Your name" MaxLength="32" />
-            <Button x:Name="CreateButton" Grid.Column="2" Content="Create screen" Click="OnCreateClick" />
-            <TextBox x:Name="CodeBox" Grid.Column="3" PlaceholderText="Code" MaxLength="8" CharacterCasing="Upper" />
-            <Button x:Name="JoinButton" Grid.Column="4" Content="Join" Click="OnJoinClick" />
-            <TextBlock x:Name="SessionText" Grid.Column="5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+            <TextBlock x:Name="SessionText" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        Text="Not in a screen" Opacity="0.8" />
+            <Button x:Name="LeaveButton" Grid.Column="3" Content="Leave screen" Click="OnLeaveClick" Visibility="Collapsed" />
         </Grid>
 
         <!-- The native video window is positioned exactly over this element. -->
         <Border x:Name="VideoArea" Grid.Row="1" Background="Black" />
+
+        <!-- Lobby. While it is shown, the native video window is hidden so XAML can draw here. -->
+        <Grid x:Name="LobbyPanel" Grid.Row="1" Padding="16,8,16,16" ColumnSpacing="16"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="320" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Screens from every theatre -->
+            <Grid Grid.Column="0" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="SearchBox" Grid.Column="0" PlaceholderText="Search screens"
+                             ToolTipService.ToolTip="Search by screen name, host name or exact code"
+                             TextChanged="OnLobbyQueryChanged" />
+                    <ComboBox x:Name="VisibilityFilterBox" Grid.Column="1" SelectedIndex="0" MinWidth="110"
+                              SelectionChanged="OnLobbyQueryChanged">
+                        <x:String>All screens</x:String>
+                        <x:String>Public</x:String>
+                        <x:String>Private</x:String>
+                    </ComboBox>
+                    <ComboBox x:Name="TheatreFilterBox" Grid.Column="2" MinWidth="130" SelectionChanged="OnLobbyQueryChanged" />
+                    <ComboBox x:Name="SortBox" Grid.Column="3" SelectedIndex="0" MinWidth="130"
+                              SelectionChanged="OnLobbyQueryChanged">
+                        <x:String>Most viewers</x:String>
+                        <x:String>Lowest ping</x:String>
+                        <x:String>Name</x:String>
+                    </ComboBox>
+                    <Button x:Name="RefreshButton" Grid.Column="4" Content="Refresh" Click="OnRefreshClick" />
+                </Grid>
+
+                <StackPanel x:Name="TheatreStrip" Grid.Row="1" Orientation="Horizontal" Spacing="6" />
+                <TextBlock x:Name="LobbyStatusText" Grid.Row="2" Opacity="0.7" Text="Loading theatres…" />
+
+                <ListView x:Name="LobbyList" Grid.Row="3" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="OnLobbyItemClick">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:LobbyRow">
+                            <Grid Padding="4,8" ColumnSpacing="12" Opacity="{x:Bind RowOpacity}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="56" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE72E;" FontSize="14" Visibility="{x:Bind LockVisibility}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind Subtitle}" Opacity="0.7" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Border Grid.Column="2" VerticalAlignment="Center" CornerRadius="4" Padding="8,2"
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                    <TextBlock Text="{x:Bind Theatre}" FontSize="12" />
+                                </Border>
+                                <TextBlock Grid.Column="3" Text="{x:Bind Viewers}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="{x:Bind Ping}" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                           Opacity="0.7" FontSize="12" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+
+            <!-- Join and create -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Join a screen" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="JoinTargetText" Opacity="0.8" TextWrapping="Wrap" Visibility="Collapsed" />
+                        <TextBox x:Name="CodeBox" PlaceholderText="Screen code, e.g. 7K3QXM" MaxLength="12"
+                                 CharacterCasing="Upper" TextChanged="OnCodeChanged" KeyUp="OnCodeKeyUp" />
+                        <PasswordBox x:Name="JoinPasswordBox" PlaceholderText="Password" Visibility="Collapsed"
+                                     KeyUp="OnJoinPasswordKeyUp" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="JoinButton" Content="Join" Click="OnJoinClick" Style="{ThemeResource AccentButtonStyle}" />
+                            <Button x:Name="CancelJoinButton" Content="Cancel" Click="OnCancelJoinClick" Visibility="Collapsed" />
+                        </StackPanel>
+                        <TextBlock x:Name="JoinMessage" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Create a screen" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                        <TextBox x:Name="ScreenNameBox" Header="Screen name" PlaceholderText="Movie night" MaxLength="64"
+                                 TextChanged="OnCreateFormChanged" />
+                        <ComboBox x:Name="TheatrePicker" Header="Theatre" HorizontalAlignment="Stretch"
+                                  PlaceholderText="Loading theatres…" IsEnabled="False" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleSwitch x:Name="PrivateSwitch" Header="Visibility" OffContent="Public" OnContent="Private"
+                                          Toggled="OnCreateFormChanged" />
+                            <NumberBox x:Name="MaxViewersBox" Grid.Column="1" Header="Max viewers" Value="10" Minimum="2"
+                                       Maximum="25" SpinButtonPlacementMode="Compact" SmallChange="1" />
+                        </Grid>
+                        <PasswordBox x:Name="CreatePasswordBox" PlaceholderText="Password (required)" Visibility="Collapsed"
+                                     PasswordChanged="OnCreateFormChanged" />
+                        <CheckBox x:Name="HideFromLobbyBox" Content="Hide from lobby (join by code only)" Visibility="Collapsed" />
+                        <Button x:Name="CreateButton" Content="Create screen" Click="OnCreateClick" IsEnabled="False"
+                                Style="{ThemeResource AccentButtonStyle}" />
+                        <TextBlock x:Name="CreateMessage" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
 
         <!-- Sync overlay: a windowed popup renders in its own HWND, so it sits above the video. -->
         <Popup x:Name="OverlayPopup" ShouldConstrainToRootBounds="False">

@@ -24,9 +24,15 @@ At startup the app loads the theatre list from the
 [directory](https://kino-directory.srie.workers.dev/servers.json). If that fails, it uses the last good copy
 (`%LOCALAPPDATA%\Kino\servers.json`), and after that the list built into the app (`TheatreDirectory.Bundled`).
 
-- **Create screen** uses the theatre chosen in the picker. The default is **Fastest**: the reachable, compatible theatre with the lowest ping.
-- **Join** looks the code up on every theatre in parallel, so you never have to say which theatre a screen is on.
-- `--theatre http://127.0.0.1:8787` uses only a local `wrangler dev` theatre instead.
+The app opens on the **lobby**:
+
+- **Screens:** every listed screen from every theatre in one list, with its theatre badge, viewers and ping. You can search, filter by public/private or theatre, and sort by viewers, ping or name. The list refreshes every 15 s and when you click Refresh. A theatre that is down shows as *unavailable* and doesn't hold up the others.
+- **Join:** click a screen, or enter a code. Codes are looked up on every theatre in parallel, so you never have to say which theatre a screen is on. Private screens ask for their password in place.
+- **Create a screen:** a name is required. The theatre defaults to **Fastest** (the reachable, compatible theatre with the lowest ping). Private screens need a password and can be hidden from the lobby. Max viewers is 2–25.
+- **Lobby / Back to video** switches between the lobby and the player. Playback keeps running while the lobby is open.
+- `--theatre http://127.0.0.1:8787` uses only a local `wrangler dev` theatre instead of the directory.
+
+Opt-in live test against a real theatre: `$env:KINO_LIVE_THEATRE="https://kino-aurora.srie.workers.dev"; dotnet test tests\Kino.Core.Tests`.
 
 Visual Studio is optional. Everything builds with the `dotnet` CLI.
 

@@ -10,6 +10,12 @@ public sealed record TheatreProbe(TheatreEntry Theatre, TheatreInfo? Info, doubl
     public bool Usable => Info is { Status: "ok" } i && i.MinProtocol <= ProtocolInfo.Version && ProtocolInfo.Version <= i.Protocol;
 }
 
+/// <summary>One theatre's lobby listing, or why it couldn't be fetched.</summary>
+public sealed record TheatreLobby(TheatreEntry Theatre, IReadOnlyList<LobbyScreen> Screens, double? RequestMs, string? Failure)
+{
+    public bool Available => Failure is null;
+}
+
 /// <summary>A screen code found on a specific theatre.</summary>
 public sealed record ResolvedScreen(TheatreApi Api, TheatreEntry Theatre, ResolveResponse Screen);
 
@@ -21,8 +27,8 @@ public sealed class TheatreNetwork
 
     public IReadOnlyList<TheatreEntry> Theatres { get; }
 
-    /// <summary>Per-theatre timeout, so one slow theatre never blocks the others.</summary>
-    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(4);
+    /// <summary>Per-theatre timeout, so one slow theatre never blocks the others (spec §10.4).</summary>
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(3);
 
     public TheatreNetwork(IReadOnlyList<TheatreEntry> theatres, HttpClient? http = null)
     {
@@ -53,6 +59,31 @@ public sealed class TheatreNetwork
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
             return new(t, null, null, e is OperationCanceledException ? "timed out" : e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Fetches every theatre's lobby in parallel. A slow or failed theatre yields a result with
+    /// <see cref="TheatreLobby.Failure"/> set instead of blocking the others. Once a connection is warm, the request
+    /// time doubles as the theatre's ping, so lobby refreshes cost one request per theatre.
+    /// </summary>
+    public Task<TheatreLobby[]> LobbyAllAsync(CancellationToken ct = default) =>
+        Task.WhenAll(Theatres.Select(t => LobbyAsync(t, ct)));
+
+    private async Task<TheatreLobby> LobbyAsync(TheatreEntry t, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(Timeout);
+        try
+        {
+            long start = Stopwatch.GetTimestamp();
+            var lobby = await _apis[t.Id].LobbyAsync(cts.Token);
+            double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            return new(t, lobby?.Screens ?? [], ms, null);
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            return new(t, [], null, e is OperationCanceledException ? "timed out" : e.Message);
         }
     }
 

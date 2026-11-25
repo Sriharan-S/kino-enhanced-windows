@@ -8,7 +8,6 @@ using Kino.Core.Sync;
 using Kino.Player;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
@@ -16,6 +15,7 @@ using Windows.Storage.Pickers;
 
 namespace Kino;
 
+/// <summary>Player, screen session and automation. Lobby, join and create live in MainWindow.Lobby.cs.</summary>
 public sealed partial class MainWindow : Window
 {
     private readonly LaunchOptions _opt;
@@ -24,13 +24,6 @@ public sealed partial class MainWindow : Window
     private readonly MpvPlayer _player;
     private readonly DispatcherQueue _ui;
     private readonly DeviceIdentity _identity;
-
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
-    private static readonly TimeSpan ProbeMaxAge = TimeSpan.FromSeconds(60);
-
-    private TheatreNetwork? _network;
-    private Task<TheatreProbe[]>? _probes;
-    private DateTime _probedAt;
 
     private ScreenSession? _session;
     private TheatreEntry? _sessionTheatre;
@@ -67,7 +60,11 @@ public sealed partial class MainWindow : Window
 
         _player.PositionChanged += pos => _ui.TryEnqueue(() => OnPosition(pos));
         _player.DurationChanged += d => _ui.TryEnqueue(() => { _duration = d; SeekSlider.Maximum = Math.Max(1, d); TryAnnounceItem(); });
-        _player.PausedChanged += p => _ui.TryEnqueue(() => { _paused = p; PlayPauseButton.Content = p ? "Play" : "Pause"; });
+        _player.PausedChanged += p => _ui.TryEnqueue(() =>
+        {
+            _paused = p;
+            PlayPauseButton.Content = p || _loadedFileName is null ? "Play" : "Pause";
+        });
         _player.FileLoaded += _ => _ui.TryEnqueue(TryAnnounceItem);
         _player.Error += msg => _ui.TryEnqueue(() => OverlayText.Text = msg);
 
@@ -77,12 +74,14 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) =>
         {
             LayoutOverlays();
-            OverlayPopup.IsOpen = OverlayToggle.IsChecked == true;
+            bool direct = _opt.Media is not null || _opt.Create is not null || _opt.Join is not null;
+            ShowLobby(!direct);
             await LoadTheatresAsync();
             await AutoStartAsync();
         };
         Closed += async (_, _) =>
         {
+            _lobbyTimer?.Stop();
             if (_session is not null) await _session.DisposeAsync();
             _syncLog?.Dispose();
             _player.Dispose();
@@ -101,158 +100,59 @@ public sealed partial class MainWindow : Window
     private async Task AutoStartAsync()
     {
         if (_opt.Media is not null) OpenMedia(_opt.Media);
-        if (_opt.Create is not null) await CreateScreenAsync(_opt.Create);
-        else if (_opt.Join is not null) await JoinScreenAsync(_opt.Join);
+        if (_opt.Create is not null) await CreateScreenAsync(new CreateScreenRequest(_opt.Create, "public"));
+        else if (_opt.Join is not null) await JoinByCodeAsync(_opt.Join.Trim());
     }
 
-    // ---- Theatres ----------------------------------------------------------------------------
-
-    /// <summary>Loads the theatre list (directory → cache → bundled, or the --theatre override) and pings each one.</summary>
-    private async Task LoadTheatresAsync()
-    {
-        TheatreList list;
-        if (_opt.Theatre is { } url)
-        {
-            var u = new Uri(url);
-            list = new([new TheatreEntry("custom", u.Authority, url)], DirectorySource.Override);
-        }
-        else
-        {
-            var dir = _opt.Directory is { } d ? new Uri(d) : TheatreDirectory.DefaultUrl;
-            list = await TheatreDirectory.LoadAsync(Http, dir, TheatreDirectory.DefaultCachePath);
-        }
-
-        _network = new TheatreNetwork(list.Theatres, Http);
-        ToolTipService.SetToolTip(TheatrePicker, $"Theatre for new screens · list: {list.Source.ToString().ToLowerInvariant()}");
-        RefreshTheatrePicker(null);
-        TheatrePicker.IsEnabled = true;
-        _ = ProbeTheatresAsync();
-    }
-
-    private Task<TheatreProbe[]> ProbeTheatresAsync()
-    {
-        _probedAt = DateTime.UtcNow;
-        var probes = _network!.ProbeAllAsync();
-        _probes = probes;
-        probes.ContinueWith(t => _ui.TryEnqueue(() => { if (_probes == probes) RefreshTheatrePicker(t.Result); }),
-                            TaskContinuationOptions.OnlyOnRanToCompletion);
-        return probes;
-    }
-
-    /// <summary>Item 0 is "Fastest"; item i is <c>_network.Theatres[i - 1]</c>.</summary>
-    private void RefreshTheatrePicker(TheatreProbe[]? probes)
-    {
-        int selected = Math.Max(0, TheatrePicker.SelectedIndex);
-        var fastest = probes is null ? null : TheatreNetwork.Fastest(probes);
-
-        TheatrePicker.Items.Clear();
-        TheatrePicker.Items.Add(fastest is null ? "Fastest theatre" : $"Fastest ({TheatreName(fastest)})");
-        for (int i = 0; i < _network!.Theatres.Count; i++)
-        {
-            var p = probes?[i];
-            string name = p is null ? _network.Theatres[i].Name : TheatreName(p);
-            string state = p is null ? "" : p.Usable ? $" · {p.RttMs:0} ms" : " · unavailable";
-            TheatrePicker.Items.Add(name + state);
-        }
-        TheatrePicker.SelectedIndex = Math.Min(selected, TheatrePicker.Items.Count - 1);
-    }
-
-    private static string TheatreName(TheatreProbe p) => p.Info?.Name ?? p.Theatre.Name;
-
-    /// <summary>The picked theatre, or the fastest usable one. Re-pings if the last ping is stale.</summary>
-    private async Task<TheatreEntry> TheatreForNewScreenAsync()
-    {
-        if (_network is null || _probes is null) throw new InvalidOperationException("Theatre list is still loading");
-        var probes = DateTime.UtcNow - _probedAt > ProbeMaxAge ? await ProbeTheatresAsync() : await _probes;
-
-        int idx = TheatrePicker.SelectedIndex;
-        if (idx > 0)
-        {
-            var p = probes[idx - 1];
-            return p.Usable ? p.Theatre
-                : throw new InvalidOperationException($"{TheatreName(p)} is unavailable ({p.Failure ?? p.Info?.Status ?? "unknown"})");
-        }
-        return TheatreNetwork.Fastest(probes)?.Theatre ?? throw new InvalidOperationException("No theatre is reachable");
-    }
-
-    // ---- Screen create / join -----------------------------------------------------------
-
-    private async void OnCreateClick(object sender, RoutedEventArgs e) => await CreateScreenAsync("Kino screen");
-
-    private async void OnJoinClick(object sender, RoutedEventArgs e) => await JoinScreenAsync(CodeBox.Text);
-
-    private async Task CreateScreenAsync(string screenName)
-    {
-        await RunSessionAction(async () =>
-        {
-            var theatre = await TheatreForNewScreenAsync();
-            var (session, created) = await ScreenSession.CreateAsync(_network!.Api(theatre), _identity, _player,
-                new CreateScreenRequest(screenName, "public"), DisplayName());
-            if (_opt.CodeFile is not null) await File.WriteAllTextAsync(_opt.CodeFile, created.Code);
-            return (session, theatre);
-        });
-    }
-
-    /// <summary>Codes are looked up on every theatre in parallel, so the viewer never has to pick one.</summary>
-    private async Task JoinScreenAsync(string code)
-    {
-        await RunSessionAction(async () =>
-        {
-            if (_network is null) throw new InvalidOperationException("Theatre list is still loading");
-            var (found, unreachable) = await _network.ResolveAsync(code.Trim());
-            if (found is null)
-                throw new InvalidOperationException(unreachable > 0
-                    ? $"no screen with code {code.Trim()} ({unreachable} theatre(s) unreachable)"
-                    : $"no screen with code {code.Trim()}");
-            if (found.Screen.RequiresPassword)
-                throw new InvalidOperationException("this screen is private; password entry arrives with the lobby UI");
-
-            var session = await ScreenSession.JoinResolvedAsync(found.Api, _identity, _player, found.Screen, DisplayName());
-            return (session, found.Theatre);
-        });
-    }
-
-    private async Task RunSessionAction(Func<Task<(ScreenSession Session, TheatreEntry Theatre)>> action)
-    {
-        CreateButton.IsEnabled = JoinButton.IsEnabled = false;
-        try
-        {
-            if (_session is not null) { await _session.DisposeAsync(); _session = null; }
-            SessionText.Text = "Connecting…";
-            var (s, theatre) = await action();
-            _sessionTheatre = theatre;
-            AttachSession(s);
-        }
-        catch (Exception ex)
-        {
-            SessionText.Text = $"Failed: {ex.Message}";
-            CreateButton.IsEnabled = JoinButton.IsEnabled = true;
-        }
-    }
+    // ---- Session -------------------------------------------------------------------------
 
     private string DisplayName() => string.IsNullOrWhiteSpace(NameBox.Text) ? "Viewer" : NameBox.Text.Trim();
 
     private void AttachSession(ScreenSession s)
     {
         _session = s;
-        CodeBox.Text = s.Code;
         UpdateSessionText();
+        LeaveButton.Visibility = Visibility.Visible;
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = s.IsHost;
+        ShowLobby(false);
 
-        s.StatusChanged += st => _ui.TryEnqueue(() => OnSyncStatus(st));
-        s.ViewersChanged += _ => _ui.TryEnqueue(UpdateSessionText);
-        s.ItemChanged += item => _ui.TryEnqueue(() => OnItemChanged(item));
-        s.Error += err => _ui.TryEnqueue(() => OverlayText.Text = $"{err.Code}: {err.Message}");
+        s.StatusChanged += st => _ui.TryEnqueue(() => { if (_session == s) OnSyncStatus(st); });
+        s.ViewersChanged += _ => _ui.TryEnqueue(() => { if (_session == s) UpdateSessionText(); });
+        s.ItemChanged += item => _ui.TryEnqueue(() => { if (_session == s) OnItemChanged(item); });
+        s.Error += err => _ui.TryEnqueue(() => { if (_session == s) OverlayText.Text = $"{err.Code}: {err.Message}"; });
         s.Closed += reason => _ui.TryEnqueue(() =>
         {
+            if (_session != s) return; // we left on purpose
             SessionText.Text = $"Disconnected ({reason})";
-            CreateButton.IsEnabled = JoinButton.IsEnabled = true;
+            LeaveButton.Visibility = Visibility.Collapsed;
             PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
+            _player.SetSpeed(1.0);
+            _session = null;
         });
 
         OnItemChanged(s.CurrentItem);
         _announcePending = s.IsHost;
         TryAnnounceItem();
+    }
+
+    private async Task LeaveSessionAsync()
+    {
+        if (_session is not { } s) return;
+        _session = null; // first, so its Closed event is ignored
+        _sessionTheatre = null;
+        await s.DisposeAsync();
+        _player.SetSpeed(1.0);
+        SessionText.Text = "Not in a screen";
+        LeaveButton.Visibility = Visibility.Collapsed;
+        PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
+        OverlayTitle.Text = "Kino";
+        OverlayText.Text = "Open a file or join a screen";
+    }
+
+    private async void OnLeaveClick(object sender, RoutedEventArgs e)
+    {
+        await LeaveSessionAsync();
+        ShowLobby(true);
     }
 
     private void UpdateSessionText()
@@ -373,6 +273,7 @@ public sealed partial class MainWindow : Window
         _loadedFileName = pathOrUrl.Contains("://") ? pathOrUrl : Path.GetFileName(pathOrUrl);
         _duration = 0;
         _player.Load(pathOrUrl);
+        ShowLobby(false);
         if (_session is null)
         {
             _player.SetPaused(false); // solo playback
@@ -411,5 +312,6 @@ public sealed partial class MainWindow : Window
 
     private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e) => _player?.SetVolume(e.NewValue);
 
-    private void OnOverlayToggle(object sender, RoutedEventArgs e) => OverlayPopup.IsOpen = OverlayToggle.IsChecked == true;
+    private void OnOverlayToggle(object sender, RoutedEventArgs e) =>
+        OverlayPopup.IsOpen = OverlayToggle.IsChecked == true && !_lobbyVisible;
 }
