@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer": the setup program for one architecture (uploaded as a GitHub artifact).
+  Paste this into SignPath → Project → Artifact configurations → "installer".
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file-set>
+      <include path="Kino-Setup-*.exe" min-matches="1" max-matches="1" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

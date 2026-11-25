@@ -166,7 +166,12 @@ Publishing a release:
    versions are pre-releases.
 
 Inno Setup comes from the `Tools.InnoSetup` NuGet package (pinned, signature checked) via `tools/Get-InnoSetup.ps1`.
-No install is needed. The files aren't code-signed yet, so Windows SmartScreen asks first-time users to confirm.
+No install is needed.
+
+**Code signing:** the release workflow signs Kino's files and installers through SignPath as soon as the repository
+variable `SIGNPATH_ORGANIZATION_ID` and secret `SIGNPATH_API_TOKEN` exist. Until then, releases are unsigned and
+SmartScreen asks first-time users to confirm. The artifact configurations to paste into SignPath are in
+`.signpath/artifact-configurations/` (see [Code signing policy](#code-signing-policy)).
 
 ## Try sync with two windows on one PC
 
@@ -223,3 +228,37 @@ tools/analyze-sync.mjs    Compares host/viewer sync logs
 
 Repeat the seek test with `--seeks 20=226.8,28=99.1,33.5=165.6,35=106.2` on the host
 (seconds after autoplay = target position).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [Sriharan-S](https://github.com/Sriharan-S)
+- **Approvers:** [Sriharan-S](https://github.com/Sriharan-S)
+- Only Kino's own files are signed (`Kino.exe`, `Kino*.dll` and the installers). Releases are built from this repository
+  by GitHub Actions (`.github/workflows/release.yml`) and signed only after each signing request is approved.
+- Third-party components are included as published by their authors: Microsoft's .NET and Windows App SDK files (signed
+  by Microsoft), and libmpv (unsigned).
+
+## Privacy
+
+Kino has no accounts, analytics or telemetry. It connects to other systems only for these purposes:
+
+| What | Where | When |
+|---|---|---|
+| Theatre list | `kino-directory.srie.workers.dev` | At startup |
+| Lobby, screens, sync and chat | The theatre you use (e.g. `kino-aurora…`, `kino-nova…`) | While you browse the lobby or are in a screen. Your display name, chat messages and the **names and lengths** of files you add are shared with that screen. File paths and contents never leave your PC. |
+| Update check | `api.github.com` | Once per launch. Turn it off with `"checkForUpdates": false` in `settings.json`. |
+| GIF search | `api.giphy.com` | Only when you search for GIFs, with your own API key |
+| YouTube items and links you add | YouTube, or the site of the link | Only when such an item plays |
+
+Theatres see your IP address, as any website does. To recognise you when you reconnect, they store a hash of a random
+per-screen token, never the token itself. Screens and their data are deleted when they close.
+
+## Licence
+
+Kino is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE), version 3 or (at your option) any later version. It comes with no warranty.
+Bundled third-party components keep their own licences: libmpv (GPL v2 or later) and Microsoft's .NET and Windows
+App SDK (MIT).

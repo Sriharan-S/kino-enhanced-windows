@@ -14,8 +14,13 @@
 param(
     [ValidateSet('x64', 'x86', 'arm64')][string[]]$Arch = @('x64', 'x86', 'arm64'),
     [switch]$SkipInstaller,
+    # Two-stage use (code signing in between): -PublishOnly writes dist\publish\<arch>\Kino; after the app files are
+    # signed, -PackageFrom <that folder> builds the installer and portable zip from them.
+    [switch]$PublishOnly,
+    [string]$PackageFrom,
     [string]$Dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe"
 )
+if ($PackageFrom -and $Arch.Count -ne 1) { throw "-PackageFrom needs exactly one -Arch" }
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if (Test-Path $Dotnet) { $env:DOTNET_ROOT = Split-Path $Dotnet -Parent } else { $Dotnet = 'dotnet' }
@@ -32,18 +37,23 @@ $platform = @{ x64 = 'x64'; x86 = 'x86'; arm64 = 'ARM64' }
 
 foreach ($a in $Arch) {
     Write-Host "`n=== $a ==="
-    & (Join-Path $PSScriptRoot 'Fetch-LibMpv.ps1') -Arch $a
-
-    $publish = Join-Path $dist "publish\$a\Kino"
-    if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
-    & $Dotnet publish (Join-Path $root 'src\Kino.App\Kino.App.csproj') -c Release -p:Platform=$($platform[$a]) -r "win-$a" `
-        --self-contained true -p:PublishReadyToRun=false -p:DebugType=none -p:GenerateDocumentationFile=false -o $publish | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "publish failed for $a" }
+    if ($PackageFrom) {
+        $publish = (Resolve-Path $PackageFrom).Path
+    }
+    else {
+        & (Join-Path $PSScriptRoot 'Fetch-LibMpv.ps1') -Arch $a
+        $publish = Join-Path $dist "publish\$a\Kino"
+        if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
+        & $Dotnet publish (Join-Path $root 'src\Kino.App\Kino.App.csproj') -c Release -p:Platform=$($platform[$a]) -r "win-$a" `
+            --self-contained true -p:PublishReadyToRun=false -p:DebugType=none -p:GenerateDocumentationFile=false -o $publish | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "publish failed for $a" }
+    }
     foreach ($required in 'Kino.exe', 'libmpv-2.dll', 'Kino.pri', 'MainWindow.xbf', 'Assets\Kino.ico') {
         if (-not (Test-Path (Join-Path $publish $required))) { throw "$a build is missing $required" }
     }
+    if ($PublishOnly) { continue }
 
-    # Installer (from the plain publish folder).
+    # Installer (from the published, possibly signed, app folder).
     if ($iscc) {
         & $iscc /Q "/DAppVersion=$version" "/DNumericVersion=$numeric" "/DArch=$a" "/DSourceDir=$publish" "/DOutputDir=$dist" `
             (Join-Path $root 'installer\Kino.iss') | Out-Host

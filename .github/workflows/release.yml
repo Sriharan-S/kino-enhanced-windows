@@ -48,14 +48,79 @@ jobs:
     strategy:
       matrix:
         arch: [x64, x86, arm64]
+    env:
+      # Code signing through SignPath (free for open source) switches on once the repository variable
+      # SIGNPATH_ORGANIZATION_ID and secret SIGNPATH_API_TOKEN exist. Without them, releases are unsigned.
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      APP_DIR: dist/publish/${{ matrix.arch }}/Kino
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      - name: Publish the app
+        shell: pwsh
+        run: ./tools/Build-Release.ps1 -Arch ${{ matrix.arch }} -Dotnet dotnet -PublishOnly
+
+      # --- Signing, step 1: Kino's own executables, before they go into the installer and zip
+      - name: Upload app for signing
+        if: env.SIGN == 'true'
+        id: unsigned-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app-${{ matrix.arch }}
+          path: ${{ env.APP_DIR }}
+          retention-days: 1
+      - name: Sign app
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'kino-enhanced-windows' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed/${{ matrix.arch }}/Kino
+
       - name: Installer and portable edition
         shell: pwsh
-        run: ./tools/Build-Release.ps1 -Arch ${{ matrix.arch }} -Dotnet dotnet
+        run: |
+          $from = if ($env:SIGN -eq 'true') { 'dist/signed/${{ matrix.arch }}/Kino' } else { $env:APP_DIR }
+          ./tools/Build-Release.ps1 -Arch ${{ matrix.arch }} -Dotnet dotnet -PackageFrom $from
+
+      # --- Signing, step 2: the installer
+      - name: Upload installer for signing
+        if: env.SIGN == 'true'
+        id: unsigned-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-setup-${{ matrix.arch }}
+          path: dist/Kino-Setup-${{ matrix.arch }}.exe
+          retention-days: 1
+      - name: Sign installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'kino-enhanced-windows' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed-setup
+      - name: Use the signed installer
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          Copy-Item dist/signed-setup/Kino-Setup-${{ matrix.arch }}.exe dist/ -Force
+          $sig = Get-AuthenticodeSignature dist/Kino-Setup-${{ matrix.arch }}.exe
+          if ($sig.Status -ne 'Valid') { throw "Installer signature: $($sig.Status)" }
+          "Signed by $($sig.SignerCertificate.Subject)"
+
       - uses: actions/upload-artifact@v4
         with:
           name: kino-${{ matrix.arch }}

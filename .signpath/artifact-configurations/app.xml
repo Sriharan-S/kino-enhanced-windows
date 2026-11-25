@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "app": the published app folder (uploaded as a GitHub artifact, i.e. a zip).
+  Signs Kino's own executables. Microsoft's runtime DLLs are already signed; libmpv is passed through unchanged.
+  Paste this into SignPath → Project → Artifact configurations → "app".
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="Kino.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file-set>
+      <include path="Kino.dll" />
+      <include path="Kino.Core.dll" />
+      <include path="Kino.Player.dll" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>
