@@ -167,6 +167,40 @@ public class LiveTheatreTests
         }
     }
 
+    [Fact]
+    public async Task Buffering_viewer_holds_the_screen_and_ready_checks_tally()
+    {
+        if (Url is null) return;
+        var api = new TheatreApi(new Uri(Url));
+        var (host, created) = await ScreenSession.CreateAsync(api, DeviceIdentity.LoadOrCreate("test-live-host"), new SimPlayer { Pos = 0 },
+            new CreateScreenRequest("Hold test", "public"), "Host");
+        await using var _ = host;
+        var viewerPlayer = new SimPlayer();
+        await using var viewer = await ScreenSession.JoinResolvedAsync(api, DeviceIdentity.LoadOrCreate("test-live-viewer"), viewerPlayer,
+            (await api.ResolveAsync(created.Code))!, "Viewer");
+
+        await host.SetBufferingPolicyAsync(waitForEveryone: true);
+        await host.AddToPlaylistAsync([ScreenSession.NewItem.Local("Movie.mkv", 6000)]);
+        await WaitFor(host, () => host.Playlist.Count == 1 && host.Screen?.BufferingPolicy == "wait");
+        await host.PlayItemAsync(host.Playlist[0].Id);
+        await WaitFor(host, () => host.Engine.Anchor?.IsPlaying == true);
+
+        viewerPlayer.Buffering = true; // the viewer's engine sees it; after 2 s the session reports "buffering"
+        await WaitFor(host, () => host.Hold is ["Viewer"]);
+        Assert.False(host.Engine.Anchor!.IsPlaying);
+        Assert.Equal("buffering", host.Viewers.Single(v => v.Name == "Viewer").Status);
+
+        viewerPlayer.Buffering = false;
+        await WaitFor(host, () => host.Hold is null && host.Engine.Anchor?.IsPlaying == true);
+
+        await host.StartReadyCheckAsync();
+        await WaitFor(viewer, () => viewer.Ready is { Done: false });
+        await viewer.AnswerReadyAsync(viewer.Ready!.Id, ready: true);
+        await WaitFor(host, () => host.Ready is { Done: true });
+        Assert.Equal(2, host.Ready!.Answers.Count(a => a.Value));
+        await host.CloseScreenAsync();
+    }
+
     private static async Task WaitFor(ScreenSession s, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

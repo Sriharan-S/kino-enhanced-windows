@@ -173,6 +173,7 @@ public sealed partial class MainWindow : Window
         AttachPlaylist(s);
         s.Engine.PersonalOffsetMs = CurrentView.SyncOffsetMs;
         AttachChat(s);
+        AttachNotices(s);
         s.SubsChanged += subs => _ui.TryEnqueue(() => { if (_session == s) _ = RunSubtitleHooksAsync(); });
         OnItemChanged(s.CurrentItem);
 
@@ -223,6 +224,7 @@ public sealed partial class MainWindow : Window
         _subChoices.Clear();
         _ownSubs.Clear();
         DetachChat();
+        NoticePopup.IsOpen = false;
         PlaylistList.ItemsSource = null;
         PreviousButton.Visibility = NextButton.Visibility = Visibility.Collapsed;
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
@@ -315,6 +317,8 @@ public sealed partial class MainWindow : Window
 
         OverlayPopup.HorizontalOffset = origin.X + 16;
         OverlayPopup.VerticalOffset = origin.Y + 16;
+        NoticePopup.HorizontalOffset = origin.X + Math.Max(16, VideoArea.ActualWidth / 2 - 170);
+        NoticePopup.VerticalOffset = origin.Y + 24;
         ReactionPopup.HorizontalOffset = origin.X + 16;
         ReactionPopup.VerticalOffset = origin.Y + Math.Max(0, VideoArea.ActualHeight - 16 - ReactionStack.Children.Count * 40);
     }

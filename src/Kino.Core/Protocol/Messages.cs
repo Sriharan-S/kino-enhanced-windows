@@ -51,6 +51,9 @@ public sealed record ViewerInfo(string Id, string Name, string? Device, bool IsH
     /// <summary>False while their connection has dropped and they are in the reconnect grace period.</summary>
     public bool Connected { get; init; } = true;
 
+    /// <summary>"sync", "catching", "buffering", "mismatch", "waiting" or "nofile" (spec §12).</summary>
+    public string Status { get; init; } = "sync";
+
     public bool Can(string permission) => Permissions.Contains(permission);
 
     /// <summary>Defines the timeline: the host, or the acting host while the host is away.</summary>
@@ -63,6 +66,9 @@ public sealed record ScreenInfo(string Code, string Name, string Visibility, int
 {
     public bool Hidden { get; init; }
     public bool AutoAdvance { get; init; } = true;
+
+    /// <summary>"keep" playing while someone buffers, or "wait" for everyone (spec §14.10).</summary>
+    public string BufferingPolicy { get; init; } = "keep";
     public bool IsPrivate => Visibility == "private";
 }
 
@@ -73,7 +79,12 @@ public sealed record Welcome(ViewerInfo Self, ScreenInfo Screen, ViewerInfo[] Vi
     public Item[] Playlist { get; init; } = [];
     public ChatMessage[] Chat { get; init; } = [];
     public SubMeta[] Subs { get; init; } = [];
+    public ReadyCheck? Ready { get; init; }
+    public string[]? Hold { get; init; }
 }
+
+/// <summary>A ready check (spec §14.14). Answers are by viewer id.</summary>
+public sealed record ReadyCheck(long Id, string By, double Deadline, Dictionary<string, bool> Answers, bool Done);
 
 /// <summary>A shared subtitle file for one playlist item (contents are fetched over HTTP).</summary>
 public sealed record SubMeta(string Id, string ItemId, string Name, string Format, long Size, string From, string FromName);
@@ -126,6 +137,8 @@ public abstract record ServerMessage
     public sealed record ChatMsg(ChatMessage Data) : ServerMessage;
     public sealed record ReactMsg(Reaction Data) : ServerMessage;
     public sealed record SubsMsg(SubMeta[] Data) : ServerMessage;
+    public sealed record ReadyMsg(ReadyCheck? Data) : ServerMessage;
+    public sealed record HoldMsg(string[]? Data) : ServerMessage;
     public sealed record ErrorMsg(ServerError Data) : ServerMessage;
     public sealed record Unknown(string Type) : ServerMessage;
 
@@ -151,6 +164,8 @@ public abstract record ServerMessage
             "chat" => new ChatMsg(data.Deserialize<ChatMessage>(o)!),
             "react" => new ReactMsg(data.Deserialize<Reaction>(o)!),
             "subs" => new SubsMsg(data.Deserialize<SubMeta[]>(o)!),
+            "ready" => new ReadyMsg(data.ValueKind == JsonValueKind.Null ? null : data.Deserialize<ReadyCheck>(o)),
+            "hold" => new HoldMsg(data.ValueKind == JsonValueKind.Null ? null : data.Deserialize<string[]>(o)),
             "error" => new ErrorMsg(data.Deserialize<ServerError>(o)!),
             _ => new Unknown(type),
         };

@@ -44,6 +44,19 @@ public sealed class ScreenSession : IAsyncDisposable
     public IReadOnlyList<SubMeta> Subs { get; private set; } = [];
     public event Action<IReadOnlyList<SubMeta>>? SubsChanged;
 
+    /// <summary>Names the screen is paused for under "wait for everyone", or null (spec §14.10).</summary>
+    public IReadOnlyList<string>? Hold { get; private set; }
+    public event Action<IReadOnlyList<string>?>? HoldChanged;
+
+    /// <summary>The current or last ready check (spec §14.14).</summary>
+    public ReadyCheck? Ready { get; private set; }
+    public event Action<ReadyCheck?>? ReadyChanged;
+
+    /// <summary>Set by the app when this viewer's file differs from the host's; reported as "mismatch".</summary>
+    public bool FileMismatch { get; set; }
+
+    private StatusReporter _status = new();
+
     /// <summary>Recent chat, oldest first (the theatre keeps the last 100).</summary>
     public IReadOnlyList<ChatMessage> Chat { get { lock (_chatLock) return [.. _chat]; } }
     private List<ChatMessage> _chat = [];
@@ -197,6 +210,9 @@ public sealed class ScreenSession : IAsyncDisposable
         CurrentItem = w.Item;
         Playlist = w.Playlist;
         Subs = w.Subs;
+        Hold = w.Hold;
+        Ready = w.Ready;
+        _status = new StatusReporter(); // the theatre starts us at "sync" again
         lock (_chatLock) _chat = [.. w.Chat];
         Roles = w.Roles;
         CoHosts = w.CoHosts;
@@ -207,6 +223,8 @@ public sealed class ScreenSession : IAsyncDisposable
         PlaylistChanged?.Invoke(w.Playlist);
         ChatReset?.Invoke();
         SubsChanged?.Invoke(w.Subs);
+        HoldChanged?.Invoke(w.Hold);
+        ReadyChanged?.Invoke(w.Ready);
         ItemChanged?.Invoke(w.Item);
         RolesChanged?.Invoke(w.Roles);
         CoHostsChanged?.Invoke(w.CoHosts);
@@ -324,6 +342,17 @@ public sealed class ScreenSession : IAsyncDisposable
 
     public Task UnshareSubtitleAsync(string id) => _conn.SendAsync("subs.unshare", new { id });
 
+    // ---- Buffering policy and ready check --------------------------------------------------------
+
+    /// <summary>"Resume anyway" while the screen waits for someone (needs <c>playback.toggle</c>).</summary>
+    public Task ReleaseHoldAsync() => _conn.SendAsync("hold.release");
+
+    public Task StartReadyCheckAsync() => _conn.SendAsync("ready.start");
+    public Task AnswerReadyAsync(long id, bool ready) => _conn.SendAsync("ready.answer", new { id, ready });
+
+    public Task SetBufferingPolicyAsync(bool waitForEveryone) =>
+        _conn.SendAsync("settings.update", new { bufferingPolicy = waitForEveryone ? "wait" : "keep" });
+
     // ---- Screen settings & invites -------------------------------------------------------
 
     /// <summary>Changes screen settings (<c>screen.settings</c>). Only the given fields change; a password is needed to go private.</summary>
@@ -436,6 +465,14 @@ public sealed class ScreenSession : IAsyncDisposable
                 Subs = sb.Data;
                 SubsChanged?.Invoke(sb.Data);
                 break;
+            case ServerMessage.HoldMsg h:
+                Hold = h.Data;
+                HoldChanged?.Invoke(h.Data);
+                break;
+            case ServerMessage.ReadyMsg rc:
+                Ready = rc.Data;
+                ReadyChanged?.Invoke(rc.Data);
+                break;
             case ServerMessage.ReactMsg r:
                 ReactionReceived?.Invoke(r.Data);
                 break;
@@ -491,6 +528,8 @@ public sealed class ScreenSession : IAsyncDisposable
                 Engine.Tick((now - last) / 1000.0);
                 last = now;
                 StatusChanged?.Invoke(Engine.Status);
+                if (!IsReconnecting && _status.Update(Engine.Status.Zone, FileMismatch, now) is { } status)
+                    _ = _conn.SendAsync("status", new { value = status });
 
                 if (!IsReconnecting && now - lastResync >= _settings.ResyncEvery.TotalMilliseconds)
                 {

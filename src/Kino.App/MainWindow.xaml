@@ -83,6 +83,7 @@
                            Visibility="Collapsed" />
                 <StackPanel Grid.Row="3" Orientation="Vertical" Spacing="8">
                     <Button x:Name="ScreenButton" Content="Invite &amp; settings…" Click="OnScreenClick" />
+                    <Button x:Name="ReadyCheckButton" Content="Ready check" Click="OnReadyCheckClick" />
                     <Button x:Name="RolesButton" Content="Roles…" Click="OnRolesClick" />
                     <Button x:Name="CloseScreenButton" Content="Close screen" Click="OnCloseScreenClick" />
                 </StackPanel>
@@ -421,6 +422,8 @@
                                   OffContent="Hidden" />
                     <ToggleSwitch x:Name="SettingsAutoAdvanceSwitch" Header="When an item ends" OnContent="Play the next one"
                                   OffContent="Stop" />
+                    <ToggleSwitch x:Name="SettingsBufferingSwitch" Header="When someone is buffering" OnContent="Wait for everyone"
+                                  OffContent="Keep playing" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="SaveSettingsButton" Content="Save settings" Click="OnSaveSettingsClick"
                                 Style="{ThemeResource AccentButtonStyle}" />
@@ -431,6 +434,21 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+
+        <!-- Notices over the video: "waiting for…" (with resume anyway) and ready checks. Windowed popup. -->
+        <Popup x:Name="NoticePopup" ShouldConstrainToRootBounds="False">
+            <Border Background="#E0202020" CornerRadius="10" Padding="16,10" MinWidth="280">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="NoticeText" Foreground="White" FontSize="15" TextWrapping="Wrap" MaxWidth="360" />
+                    <TextBlock x:Name="NoticeDetail" Foreground="#CCFFFFFF" FontSize="12" Visibility="Collapsed" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="ReadyYesButton" Content="✅ Ready" Click="OnReadyYes" Visibility="Collapsed" />
+                        <Button x:Name="ReadyNoButton" Content="❌ Not yet" Click="OnReadyNo" Visibility="Collapsed" />
+                        <Button x:Name="ResumeAnywayButton" Content="Resume anyway" Click="OnResumeAnyway" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
 
         <!-- Floating reactions over the video (windowed popup, like the sync overlay). -->
         <Popup x:Name="ReactionPopup" ShouldConstrainToRootBounds="False" IsHitTestVisible="False">

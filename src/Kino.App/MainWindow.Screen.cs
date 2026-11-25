@@ -43,7 +43,7 @@ public sealed partial class MainWindow
         SettingsHint.Text = canEdit ? "Changes apply to everyone at once. Viewers already here keep their place."
                                     : "You can see the settings, but not change them.";
         SaveSettingsButton.Visibility = canEdit ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var c in new Control[] { SettingsNameBox, SettingsPrivateSwitch, SettingsMaxViewersBox, SettingsPasswordBox, SettingsHiddenBox, SettingsDevicesSwitch, SettingsAutoAdvanceSwitch })
+        foreach (var c in new Control[] { SettingsNameBox, SettingsPrivateSwitch, SettingsMaxViewersBox, SettingsPasswordBox, SettingsHiddenBox, SettingsDevicesSwitch, SettingsAutoAdvanceSwitch, SettingsBufferingSwitch })
             c.IsEnabled = canEdit;
 
         if (!resetFields) return;
@@ -53,6 +53,7 @@ public sealed partial class MainWindow
         SettingsHiddenBox.IsChecked = screen.Hidden;
         SettingsDevicesSwitch.IsOn = screen.ShowDevices;
         SettingsAutoAdvanceSwitch.IsOn = screen.AutoAdvance;
+        SettingsBufferingSwitch.IsOn = screen.BufferingPolicy == "wait";
         SettingsPasswordBox.Password = "";
         OnSettingsPrivateToggled(this, new RoutedEventArgs());
     }
@@ -85,6 +86,7 @@ public sealed partial class MainWindow
             maxViewers: max == screen.MaxViewers ? null : max,
             showDevices: SettingsDevicesSwitch.IsOn == screen.ShowDevices ? null : SettingsDevicesSwitch.IsOn);
         if (SettingsAutoAdvanceSwitch.IsOn != screen.AutoAdvance) await s.SetAutoAdvanceAsync(SettingsAutoAdvanceSwitch.IsOn);
+        if (SettingsBufferingSwitch.IsOn != (screen.BufferingPolicy == "wait")) await s.SetBufferingPolicyAsync(SettingsBufferingSwitch.IsOn);
         SettingsPasswordBox.Password = "";
     }
 

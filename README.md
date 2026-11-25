@@ -91,6 +91,17 @@ show joins, leaves, role and host changes, and what's now playing. People who jo
   the message box.
 - Sending needs `chat.send`, `chat.gif` or `chat.react` (everyone has them by default). Muted viewers can't send anything.
 
+## Sync status, buffering and ready checks
+
+- The viewers panel shows everyone's **sync status** (🟢 in sync, 🟡 catching up, 🔵 buffering, ⚠ file differs,
+  ⏳ waiting, ⛔ no file) and **latency** (🟢 < 100 ms, 🟡 100–250 ms, 🔴 > 250 ms). Each app reports its own status, only
+  when it changes.
+- **When someone is buffering** (Invite & settings): *Keep playing* (default), or *Wait for everyone*. With *Wait*, anyone
+  buffering for more than 2 s pauses the screen ("Waiting for Alex…"). It resumes for everyone when they're ready. Anyone who
+  can play/pause can **Resume anyway**.
+- **Ready check** (viewers panel, `screen.ready_check`): everyone gets a ✅ Ready / ❌ Not yet prompt over the video, with a live
+  tally. It closes after 30 s, and the result goes to chat.
+
 ## Invites, settings and reconnecting
 
 - **Invite & settings…** (in the viewers panel) shows the screen code and its invite link, for example

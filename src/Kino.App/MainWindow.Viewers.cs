@@ -37,6 +37,7 @@ public sealed partial class MainWindow
 
         RolesButton.Visibility = s.Can(Permissions.RolesManage) ? Visibility.Visible : Visibility.Collapsed;
         CloseScreenButton.Visibility = s.IsHost ? Visibility.Visible : Visibility.Collapsed;
+        ReadyCheckButton.Visibility = s.Can(Permissions.ReadyCheck) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Shows a rejected action's reason where the user is looking.</summary>

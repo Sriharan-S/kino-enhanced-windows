@@ -63,6 +63,7 @@ public sealed partial class MainWindow
         if (_session is not { } s) return;
         foreach (var id in _manual.Keys.Where(id => s.Playlist.All(i => i.Id != id)).ToList()) _manual.Remove(id);
         _mapping = MediaMatch.AutoMap(s.Playlist, _candidates, _manual);
+        s.FileMismatch = s.CurrentItem is { IsLocal: true } cur && _mapping.TryGetValue(cur.Id, out var mine) && MediaMatch.Compare(cur, mine) == MatchKind.Mismatch;
         RenderPlaylist();
         EnsureCurrentLoaded();
     }

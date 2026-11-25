@@ -47,12 +47,24 @@ public sealed class ViewerRow
         ColourBrush = RoleColours.Brush(colour);
 
         var detail = new List<string>();
-        if (viewer.Device is { } d) detail.Add(char.ToUpperInvariant(d[0]) + d[1..]);
         if (!viewer.Connected) detail.Add("reconnecting…");
         else
         {
-            detail.Add(viewer.Rtt is double rtt ? $"{rtt:0} ms" : "– ms");
-            if (viewer.Buffering) detail.Add("buffering");
+            detail.Add(viewer.Status switch
+            {
+                "catching" => "🟡 catching up",
+                "buffering" => "🔵 buffering",
+                "mismatch" => "⚠ file differs",
+                "waiting" => "⏳ waiting",
+                "nofile" => "⛔ no file",
+                _ => "🟢 in sync",
+            });
+        }
+        if (viewer.Device is { } d) detail.Add(char.ToUpperInvariant(d[0]) + d[1..]);
+        if (viewer.Connected)
+        {
+            // Latency bands (spec §12): green < 100 ms, yellow 100–250 ms, red > 250 ms.
+            detail.Add(viewer.Rtt is double rtt ? $"{(rtt < 100 ? "🟢" : rtt <= 250 ? "🟡" : "🔴")} {rtt:0} ms" : "– ms");
         }
         Detail = string.Join(" · ", detail);
     }
