@@ -31,8 +31,7 @@ public static class TheatreDirectory
         new("nova", "Nova", "https://kino-nova.sri-me.workers.dev"),
     ]);
 
-    public static string DefaultCachePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino", "servers.json");
+    public static string DefaultCachePath => KinoPaths.For("servers.json");
 
     public static async Task<TheatreList> LoadAsync(HttpClient http, Uri url, string cachePath, CancellationToken ct = default)
     {

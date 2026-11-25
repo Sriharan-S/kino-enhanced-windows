@@ -16,7 +16,7 @@ public sealed class DeviceIdentity
     /// <summary>Loads or creates the secret for a profile. Profiles let several instances run on one PC (testing).</summary>
     public static DeviceIdentity LoadOrCreate(string profile = "default")
     {
-        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino", profile);
+        string dir = KinoPaths.For(profile);
         string path = Path.Combine(dir, "device.key");
 
         if (File.Exists(path))

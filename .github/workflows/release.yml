@@ -1,0 +1,99 @@
+name: Release
+
+# Push a tag v<version> (matching <Version> in Directory.Build.props) to publish a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Stable versions become "Latest"; versions with a suffix (v0.2.0-beta.1) are published as pre-releases.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check version and run tests
+    runs-on: windows-2025
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Tag must match Directory.Build.props
+        shell: pwsh
+        run: |
+          [xml]$p = Get-Content Directory.Build.props
+          $v = "$($p.Project.PropertyGroup.Version)".Trim()
+          $tag = "${{ github.ref_name }}"
+          if ($tag -ne "v$v") { throw "Tag $tag doesn't match version $v in Directory.Build.props" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "prerelease=$(if ($v -match '-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: Sriharan-S/kino-enhanced
+          path: _protocol
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Unit and contract tests
+        env:
+          KINO_PROTOCOL_DIR: ${{ github.workspace }}/_protocol/protocol
+        run: dotnet test tests/Kino.Core.Tests -c Release
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: check
+    runs-on: windows-2025
+    strategy:
+      matrix:
+        arch: [x64, x86, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Installer and portable edition
+        shell: pwsh
+        run: ./tools/Build-Release.ps1 -Arch ${{ matrix.arch }} -Dotnet dotnet
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kino-${{ matrix.arch }}
+          path: |
+            dist/Kino-Setup-${{ matrix.arch }}.exe
+            dist/Kino-Portable-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the GitHub release
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: sha256sum Kino-* | sort -k2 > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Release notes
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          # This version's section of CHANGELOG.md, then the standard downloads table.
+          awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          sed "s/{{VERSION}}/$VERSION/g" .github/release-notes.md >> notes.md
+          cat notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          flags="--latest"
+          if [ "$PRERELEASE" = "true" ]; then flags="--prerelease --latest=false"; fi
+          gh release create "${{ github.ref_name }}" assets/* --title "Kino $VERSION" --notes-file notes.md $flags --verify-tag

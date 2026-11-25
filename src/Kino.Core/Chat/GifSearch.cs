@@ -61,7 +61,10 @@ public sealed class KinoSettings
 {
     public string? GiphyApiKey { get; set; }
 
-    private static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino", "settings.json");
+    /// <summary>Look for a newer release on GitHub at startup (one request per launch).</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    private static string FilePath => KinoPaths.For("settings.json");
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     public static KinoSettings Load()

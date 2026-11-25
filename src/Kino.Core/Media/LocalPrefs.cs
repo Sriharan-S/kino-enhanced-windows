@@ -61,7 +61,7 @@ public sealed class LocalPrefs
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
     public static string PathFor(string profile) =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino", profile, "prefs.json");
+        KinoPaths.For(profile, "prefs.json");
 
     public static LocalPrefs Load(string file)
     {

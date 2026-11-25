@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    The one place the app's version lives (Semantic Versioning: MAJOR.MINOR.PATCH, optionally -beta.N).
+    Releases are tagged v<Version> (e.g. v0.1.0); the release workflow refuses a tag that doesn't match.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>Kino</Product>
+    <Company>Kino</Company>
+    <Copyright>Copyright © 2026 Sriharan-S</Copyright>
+  </PropertyGroup>
+</Project>

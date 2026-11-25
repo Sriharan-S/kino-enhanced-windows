@@ -7,22 +7,25 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
+    <!-- x64, x86 and ARM64 builds, each with its own libmpv (tools/Fetch-LibMpv.ps1 -Arch ...). Default: x64. -->
+    <Platforms>x64;x86;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <PlatformTarget>$(Platform)</PlatformTarget>
+    <KinoArch>$(Platform.ToLowerInvariant())</KinoArch>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Kino.Core\Kino.Core.csproj" />
   </ItemGroup>
 
-  <!-- libmpv is fetched by tools/Fetch-LibMpv.ps1 into libs/mpv (not committed) -->
+  <!-- libmpv is fetched by tools/Fetch-LibMpv.ps1 into libs/mpv/<arch> (not committed) -->
   <ItemGroup>
-    <None Include="..\..\libs\mpv\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\libs\mpv\$(KinoArch)\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <Target Name="CheckLibMpv" BeforeTargets="Build">
-    <Error Condition="!Exists('..\..\libs\mpv\libmpv-2.dll')"
-           Text="libmpv-2.dll not found. Run tools\Fetch-LibMpv.ps1 first." />
+    <Error Condition="!Exists('..\..\libs\mpv\$(KinoArch)\libmpv-2.dll')"
+           Text="libmpv-2.dll for $(KinoArch) not found. Run tools\Fetch-LibMpv.ps1 -Arch $(KinoArch) first." />
   </Target>
 
 </Project>

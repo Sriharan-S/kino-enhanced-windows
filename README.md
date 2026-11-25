@@ -124,22 +124,49 @@ Visual Studio is optional. Everything builds with the `dotnet` CLI.
 ## Build, test, run
 
 ```powershell
-.\tools\Fetch-LibMpv.ps1                      # pinned libmpv, SHA-1 verified, into libs/mpv (git-ignored)
-dotnet build Kino.slnx -p:Platform=x64
+.\tools\Fetch-LibMpv.ps1                      # pinned libmpv (SHA-256 verified) into libs/mpv/x64 (git-ignored); -Arch x86|arm64, -All
+dotnet build Kino.slnx -p:Platform=x64        # or x86, ARM64
 dotnet test tests\Kino.Core.Tests             # sync engine, clock sync, protocol contract tests
 
 $kino = ".\src\Kino.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\Kino.exe"
 & $kino                                        # then use Open…, Create screen or Join
 ```
 
-## Portable release build
+## Releases
+
+**Users:** download from [Releases → Latest](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest).
+These links always point at the newest version:
+
+| | Installer | Portable |
+|---|---|---|
+| x64 (most PCs) | [Kino-Setup-x64.exe](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Setup-x64.exe) | [Kino-Portable-x64.zip](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Portable-x64.zip) |
+| ARM64 | [Kino-Setup-arm64.exe](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Setup-arm64.exe) | [Kino-Portable-arm64.zip](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Portable-arm64.zip) |
+| x86 (32-bit) | [Kino-Setup-x86.exe](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Setup-x86.exe) | [Kino-Portable-x86.zip](https://github.com/Sriharan-S/kino-enhanced-windows/releases/latest/download/Kino-Portable-x86.zip) |
+
+- **Installer** ([Inno Setup](https://jrsoftware.org/isinfo.php), `installer/Kino.iss`): per user, no admin (admins may
+  choose all users). Start menu entry, uninstall in Settings → Apps, `kino://` links. Newer versions upgrade in place.
+  Uninstalling keeps your data unless you ask it to remove it.
+- **Portable:** a `Kino\` folder with a `portable` marker, so all data goes to `Kino\Data` (identity included). Good
+  for USB sticks.
+- The app checks GitHub for a newer release once per launch and shows a notice in the lobby (turn it off with
+  `"checkForUpdates": false` in `settings.json`).
+
+**Maintainers:**
 
 ```powershell
-.\tools\Publish-Portable.ps1     # → dist\Kino-<version>-win-x64.zip (self-contained, about 135 MB)
+.\tools\Build-Release.ps1        # all six files + SHA256SUMS.txt into dist\ (or -Arch x64 -SkipInstaller)
 ```
 
-Unzip anywhere and run `Kino.exe`. No installer or admin rights are needed: .NET, the Windows App SDK and libmpv are
-included. The version comes from `<Version>` in `src/Kino.App/Kino.App.csproj`.
+Publishing a release:
+1. Set `<Version>` in `Directory.Build.props` ([SemVer](https://semver.org)), and add a `## <version>` section to
+   `CHANGELOG.md`. That section becomes the release notes.
+2. Commit, then tag and push: `git tag v0.2.0; git push origin v0.2.0`.
+3. The **Release** workflow checks that the tag matches the version, runs the tests, builds x64/x86/ARM64 installers and
+   portable zips in parallel, and publishes them with checksums. Plain versions are marked **Latest**; `-beta.N`
+   versions are pre-releases.
+
+Inno Setup comes from the `Tools.InnoSetup` NuGet package (pinned, signature checked) via `tools/Get-InnoSetup.ps1`.
+No install is needed. The files aren't code-signed yet, so Windows SmartScreen asks first-time users to confirm.
 
 ## Try sync with two windows on one PC
 
@@ -172,7 +199,9 @@ src/Kino.Core/            Platform-neutral core (net10.0): protocol, theatre API
 src/Kino.Player/          libmpv bindings + MpvPlayer (implements IPlayback) + native VideoHost window
 src/Kino.App/             WinUI 3 app
 tests/Kino.Core.Tests/    xUnit tests, including a simulated player for the sync engine
-tools/Fetch-LibMpv.ps1    Downloads the pinned libmpv build
+tools/Fetch-LibMpv.ps1    Downloads the pinned libmpv build per architecture
+tools/Build-Release.ps1   Installers + portable zips for x64/x86/ARM64
+installer/Kino.iss        Inno Setup script
 tools/Kino.TestMedia/     Generates seekable test videos
 tools/analyze-sync.mjs    Compares host/viewer sync logs
 ```

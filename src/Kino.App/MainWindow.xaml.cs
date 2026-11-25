@@ -52,6 +52,8 @@ public sealed partial class MainWindow : Window
         else
             AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 800));
         Title = options.Profile == "default" ? "Kino" : $"Kino — {options.Profile}";
+        string icon = Path.Combine(AppContext.BaseDirectory, "Assets", "Kino.ico");
+        if (File.Exists(icon)) AppWindow.SetIcon(icon);
 
         NameBox.Text = options.Name;
         InitPlayerFeatures();
@@ -85,6 +87,7 @@ public sealed partial class MainWindow : Window
             LayoutOverlays();
             bool direct = _opt.Media is not null || _opt.Create is not null || _opt.Join is not null || _opt.Invite is not null;
             ShowLobby(!direct);
+            _ = CheckForUpdatesAsync();
             await LoadTheatresAsync();
             await AutoStartAsync();
         };

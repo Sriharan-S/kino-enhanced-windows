@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build, test, portable zip
+    name: Build, test, installer and portable (x64)
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +40,14 @@ jobs:
           KINO_PROTOCOL_DIR: ${{ github.workspace }}/_protocol/protocol
         run: dotnet test tests/Kino.Core.Tests -c Release --logger "console;verbosity=normal"
 
-      - name: Portable build
+      - name: Installer and portable edition (x64)
         shell: pwsh
-        run: ./tools/Publish-Portable.ps1 -Dotnet dotnet
+        run: ./tools/Build-Release.ps1 -Arch x64 -Dotnet dotnet
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Kino-win-x64
-          path: dist/*.zip
+          name: Kino-x64
+          path: |
+            dist/Kino-Setup-x64.exe
+            dist/Kino-Portable-x64.zip
           retention-days: 14

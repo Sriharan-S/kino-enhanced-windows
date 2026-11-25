@@ -17,7 +17,14 @@ internal sealed partial class SingleInstance : IDisposable
 
     public SingleInstance(string profile) => _pipeName = PipeName(profile);
 
-    private static string PipeName(string profile) => $"Kino-{Environment.UserName}-{profile}";
+    /// <summary>Per user and profile; a portable copy has its own data, so it gets its own channel too.</summary>
+    private static string PipeName(string profile)
+    {
+        string name = $"Kino-{Environment.UserName}-{profile}";
+        if (!Kino.Core.KinoPaths.IsPortable) return name;
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Kino.Core.KinoPaths.DataRoot.ToLowerInvariant()));
+        return $"{name}-portable-{Convert.ToHexStringLower(hash)[..12]}";
+    }
 
     /// <summary>Sends the arguments to a running instance of this profile. True if one took them.</summary>
     public static bool TryForward(string profile, string[] args)
@@ -73,6 +80,14 @@ internal static class ProtocolRegistration
         {
             if (Environment.ProcessPath is not { } exe) return;
             string command = $"\"{exe}\" \"%1\"";
+
+            // A portable copy doesn't take links over from a working installed copy.
+            if (Kino.Core.KinoPaths.IsPortable &&
+                Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + Kino.Core.InviteLink.Scheme + @"\shell\open\command")?.GetValue(null) is string existing &&
+                existing.Split('"', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() is { } other &&
+                !string.Equals(other, exe, StringComparison.OrdinalIgnoreCase) && File.Exists(other))
+                return;
+
             using var key = Registry.CurrentUser.CreateSubKey(@"Software\Classes\" + Kino.Core.InviteLink.Scheme);
             key.SetValue(null, "URL:Kino invite link");
             key.SetValue("URL Protocol", "");

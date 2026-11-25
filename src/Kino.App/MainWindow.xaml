@@ -287,6 +287,12 @@
             <!-- Join and create -->
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="16">
+                    <InfoBar x:Name="UpdateBar" Severity="Informational" IsClosable="True" IsOpen="False"
+                             Title="Update available">
+                        <InfoBar.ActionButton>
+                            <Button Content="Download" Click="OnDownloadUpdateClick" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
                     <StackPanel Spacing="8">
                         <TextBlock Text="Join a screen" Style="{ThemeResource SubtitleTextBlockStyle}" />
                         <TextBlock x:Name="JoinTargetText" Opacity="0.8" TextWrapping="Wrap" Visibility="Collapsed" />
@@ -326,6 +332,7 @@
                         <TextBlock x:Name="CreateMessage" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                    TextWrapping="Wrap" Visibility="Collapsed" />
                     </StackPanel>
+                    <TextBlock x:Name="VersionText" FontSize="12" Opacity="0.55" Margin="0,8,0,0" />
                 </StackPanel>
             </ScrollViewer>
         </Grid>

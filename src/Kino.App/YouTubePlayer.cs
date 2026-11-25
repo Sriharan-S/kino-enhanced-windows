@@ -52,7 +52,7 @@ internal sealed class YouTubePlayer : IPlayback
 
     private async Task InitAsync()
     {
-        string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino", "WebView2");
+        string data = Kino.Core.KinoPaths.For("WebView2");
         var options = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required" };
         var env = await CoreWebView2Environment.CreateWithOptionsAsync(null, data, options);
         await _view.EnsureCoreWebView2Async(env);

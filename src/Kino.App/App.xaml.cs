@@ -15,12 +15,12 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += (_, e) => e.SetObserved(); // background work must never take the app down
     }
 
-    /// <summary>Appends to %LOCALAPPDATA%\Kino\crash.log, so failures can be diagnosed.</summary>
+    /// <summary>Appends to crash.log in the data folder (%LOCALAPPDATA%\Kino, or Data\ next to Kino.exe when portable).</summary>
     internal static void WriteCrashLog(Exception? ex)
     {
         try
         {
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino");
+            string dir = Kino.Core.KinoPaths.DataRoot;
             Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "crash.log"), $"[{DateTimeOffset.Now:O}] {ex}\n\n");
         }

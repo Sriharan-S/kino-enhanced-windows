@@ -36,3 +36,6 @@ Thumbs.db
 # Generated test media
 testdata/
 dist/
+
+# Downloaded build tools (Inno Setup)
+tools/.cache/
