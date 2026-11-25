@@ -30,6 +30,7 @@ public sealed partial class MainWindow
 
         foreach (var a in ViewSettings.Aspects) AspectBox.Items.Add(a == "original" ? "Original" : a);
         foreach (var (label, _) in FitModes) FitBox.Items.Add(label);
+        InitSubtitles();
 
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnShortcutKey), handledEventsToo: false);
 
@@ -51,6 +52,7 @@ public sealed partial class MainWindow
     {
         _viewKey = LocalPrefs.KeyFor(pathOrUrl);
         ApplyView();
+        _ = ApplySubtitlesAsync();
         if (_session is null && _prefs.ResumeAt(_viewKey) is double at)
         {
             _player.SeekAbsolute(at);

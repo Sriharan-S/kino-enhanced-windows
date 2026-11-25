@@ -72,7 +72,11 @@ public sealed record Welcome(ViewerInfo Self, ScreenInfo Screen, ViewerInfo[] Vi
     public CoHostInfo[] CoHosts { get; init; } = [];
     public Item[] Playlist { get; init; } = [];
     public ChatMessage[] Chat { get; init; } = [];
+    public SubMeta[] Subs { get; init; } = [];
 }
+
+/// <summary>A shared subtitle file for one playlist item (contents are fetched over HTTP).</summary>
+public sealed record SubMeta(string Id, string ItemId, string Name, string Format, long Size, string From, string FromName);
 
 public sealed record Gif(string Url, int? Width, int? Height, string? Title);
 
@@ -121,6 +125,7 @@ public abstract record ServerMessage
     public sealed record PlaylistMsg(Item[] Data) : ServerMessage;
     public sealed record ChatMsg(ChatMessage Data) : ServerMessage;
     public sealed record ReactMsg(Reaction Data) : ServerMessage;
+    public sealed record SubsMsg(SubMeta[] Data) : ServerMessage;
     public sealed record ErrorMsg(ServerError Data) : ServerMessage;
     public sealed record Unknown(string Type) : ServerMessage;
 
@@ -145,6 +150,7 @@ public abstract record ServerMessage
             "playlist" => new PlaylistMsg(data.Deserialize<Item[]>(o)!),
             "chat" => new ChatMsg(data.Deserialize<ChatMessage>(o)!),
             "react" => new ReactMsg(data.Deserialize<Reaction>(o)!),
+            "subs" => new SubsMsg(data.Deserialize<SubMeta[]>(o)!),
             "error" => new ErrorMsg(data.Deserialize<ServerError>(o)!),
             _ => new Unknown(type),
         };

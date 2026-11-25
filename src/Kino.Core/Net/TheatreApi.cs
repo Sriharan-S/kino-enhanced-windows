@@ -31,6 +31,41 @@ public sealed class TheatreApi(Uri baseUrl, HttpClient? http = null)
         return await res.Content.ReadFromJsonAsync<ResolveResponse>(ProtocolInfo.Json, ct);
     }
 
+    /// <summary>Shares a subtitle file: gzip-compressed, at most 1 MB (spec §17.2). Needs <c>subtitles.share</c>.</summary>
+    public async Task<SubMeta> UploadSubtitleAsync(string code, string token, string itemId, string name, string format, byte[] content, CancellationToken ct = default)
+    {
+        byte[] gz = Gzip(content);
+        if (gz.Length > MaxSubtitleBytes) throw new TheatreException(413, "subtitle file is too big (over 1 MB compressed)");
+        var url = new Uri(BaseUrl, $"/screens/{Uri.EscapeDataString(code)}/subs?item={Uri.EscapeDataString(itemId)}&format={Uri.EscapeDataString(format)}&name={Uri.EscapeDataString(name)}");
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(gz) };
+        req.Headers.Authorization = new("Bearer", token);
+        using var res = await _http.SendAsync(req, ct);
+        await EnsureOk(res, ct);
+        return (await res.Content.ReadFromJsonAsync<SubMeta>(ProtocolInfo.Json, ct))!;
+    }
+
+    /// <summary>Downloads and decompresses a shared subtitle file. Members only.</summary>
+    public async Task<byte[]> DownloadSubtitleAsync(string code, string token, string id, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(BaseUrl, $"/screens/{Uri.EscapeDataString(code)}/subs/{Uri.EscapeDataString(id)}"));
+        req.Headers.Authorization = new("Bearer", token);
+        using var res = await _http.SendAsync(req, ct);
+        await EnsureOk(res, ct);
+        await using var gz = new System.IO.Compression.GZipStream(await res.Content.ReadAsStreamAsync(ct), System.IO.Compression.CompressionMode.Decompress);
+        using var ms = new MemoryStream();
+        await gz.CopyToAsync(ms, ct);
+        return ms.ToArray();
+    }
+
+    public const int MaxSubtitleBytes = 1024 * 1024;
+
+    public static byte[] Gzip(byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.SmallestSize)) gz.Write(data);
+        return ms.ToArray();
+    }
+
     public Uri WebSocketUrl(string code)
     {
         var b = new UriBuilder(new Uri(BaseUrl, $"/screens/{Uri.EscapeDataString(code)}/ws"));

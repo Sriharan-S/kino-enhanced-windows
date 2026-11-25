@@ -173,6 +173,7 @@ public sealed partial class MainWindow : Window
         AttachPlaylist(s);
         s.Engine.PersonalOffsetMs = CurrentView.SyncOffsetMs;
         AttachChat(s);
+        s.SubsChanged += subs => _ui.TryEnqueue(() => { if (_session == s) _ = RunSubtitleHooksAsync(); });
         OnItemChanged(s.CurrentItem);
 
         // A file opened before joining: the host of a new, empty screen makes it the first item; anyone else
@@ -219,6 +220,8 @@ public sealed partial class MainWindow : Window
         SideColumn.Width = new GridLength(0);
         if (_page is Page.Roles or Page.Screen) ShowPage(Page.Video);
         _loadingItemId = null;
+        _subChoices.Clear();
+        _ownSubs.Clear();
         DetachChat();
         PlaylistList.ItemsSource = null;
         PreviousButton.Visibility = NextButton.Visibility = Visibility.Collapsed;

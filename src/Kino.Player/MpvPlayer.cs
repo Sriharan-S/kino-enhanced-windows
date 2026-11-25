@@ -128,7 +128,7 @@ public sealed class MpvPlayer : IDisposable, IPlayback
 
     // ---- Tracks ------------------------------------------------------------------------------
 
-    public sealed record Track(int Id, string Type, string Label, bool Selected);
+    public sealed record Track(int Id, string Type, string Label, bool Selected, bool External);
 
     /// <summary>The loaded file's tracks of one type ("audio", "video", "sub").</summary>
     public IReadOnlyList<Track> Tracks(string type)
@@ -142,9 +142,28 @@ public sealed class MpvPlayer : IDisposable, IPlayback
             string? title = GetString($"track-list/{i}/title"), lang = GetString($"track-list/{i}/lang"), codec = GetString($"track-list/{i}/codec");
             string channels = GetString($"track-list/{i}/demux-channel-count") is { } ch ? $"{ch} ch" : "";
             string label = string.Join(" · ", new[] { title, lang?.ToUpperInvariant(), codec, channels }.Where(x => !string.IsNullOrEmpty(x)));
-            list.Add(new Track(id, type, label.Length > 0 ? label : $"Track {id}", GetString($"track-list/{i}/selected") == "yes"));
+            list.Add(new Track(id, type, label.Length > 0 ? label : $"Track {id}", GetString($"track-list/{i}/selected") == "yes",
+                               GetString($"track-list/{i}/external") == "yes"));
         }
         return list;
+    }
+
+    // ---- Subtitles (spec §17) ----------------------------------------------------------------
+
+    /// <summary>Adds an external subtitle file and shows it. Returns its track id.</summary>
+    public int? AddSubtitle(string path)
+    {
+        Command("sub-add", path, "select");
+        return int.TryParse(GetString("sid"), out int id) ? id : null;
+    }
+
+    /// <summary>Shows subtitle track <paramref name="id"/>, or none.</summary>
+    public void SelectSubtitle(int? id) => SetString("sid", id?.ToString(CultureInfo.InvariantCulture) ?? "no");
+
+    /// <summary>Local look and timing (spec §17.4).</summary>
+    public void ApplySubtitleStyle(SubtitleStyle style, double offsetMs)
+    {
+        foreach (var (name, value) in style.MpvProperties(offsetMs)) SetString(name, value);
     }
 
     public void SelectAudio(int id) => SetString("aid", id.ToString(CultureInfo.InvariantCulture));

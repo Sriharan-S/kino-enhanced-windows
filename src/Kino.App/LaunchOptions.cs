@@ -4,7 +4,7 @@ namespace Kino;
 /// Command-line options. Mostly for development and automated sync tests:
 ///   Kino.exe [media | kino://join/theatre/CODE] [--profile p] [--theatre url | --directory url] [--name n] [--create "Screen"] [--join CODE]
 ///            [--autoplay] [--codefile path] [--synclog path] [--perturb seconds] [--perturb-after seconds]
-///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles|screen|playlist|chat]
+///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles|screen|playlist|chat] [--sub file [--sub-share]] [--sub-pick shared]
 /// By default the theatre list comes from the directory (servers.json). --theatre uses only that one theatre instead,
 /// e.g. a local `wrangler dev` at http://127.0.0.1:8787.
 /// </summary>
@@ -29,6 +29,11 @@ public sealed record LaunchOptions
     /// <summary>An invite link to join (kino://join/... or the web form), e.g. from clicking a link.</summary>
     public Kino.Core.InviteLink? Invite { get; init; }
 
+    /// <summary>Test hooks: load (and share) a subtitle file once the item is in; or pick the first shared one.</summary>
+    public string? Sub { get; init; }
+    public bool SubShare { get; init; }
+    public string? SubPick { get; init; }
+
     /// <summary>Opens a panel once in a screen: "viewers", "roles" or "screen" (for screenshots and tests).</summary>
     public string? Panel { get; init; }
 
@@ -48,6 +53,9 @@ public sealed record LaunchOptions
                 "--theatre" => o with { Theatre = Next() },
                 "--directory" => o with { Directory = Next() },
                 "--panel" => o with { Panel = Next() },
+                "--sub" => o with { Sub = Next() },
+                "--sub-share" => o with { SubShare = true },
+                "--sub-pick" => o with { SubPick = Next() },
                 "--name" => o with { Name = Next() },
                 "--create" => o with { Create = Next() },
                 "--join" => o with { Join = Next() },

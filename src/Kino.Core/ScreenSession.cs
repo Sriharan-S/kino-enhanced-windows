@@ -40,6 +40,10 @@ public sealed class ScreenSession : IAsyncDisposable
     public Item? CurrentItem { get; private set; }
     public IReadOnlyList<Item> Playlist { get; private set; } = [];
 
+    /// <summary>Subtitle files shared in this screen (per item).</summary>
+    public IReadOnlyList<SubMeta> Subs { get; private set; } = [];
+    public event Action<IReadOnlyList<SubMeta>>? SubsChanged;
+
     /// <summary>Recent chat, oldest first (the theatre keeps the last 100).</summary>
     public IReadOnlyList<ChatMessage> Chat { get { lock (_chatLock) return [.. _chat]; } }
     private List<ChatMessage> _chat = [];
@@ -192,6 +196,7 @@ public sealed class ScreenSession : IAsyncDisposable
         Code = w.Screen.Code;
         CurrentItem = w.Item;
         Playlist = w.Playlist;
+        Subs = w.Subs;
         lock (_chatLock) _chat = [.. w.Chat];
         Roles = w.Roles;
         CoHosts = w.CoHosts;
@@ -201,6 +206,7 @@ public sealed class ScreenSession : IAsyncDisposable
         ScreenChanged?.Invoke(w.Screen);
         PlaylistChanged?.Invoke(w.Playlist);
         ChatReset?.Invoke();
+        SubsChanged?.Invoke(w.Subs);
         ItemChanged?.Invoke(w.Item);
         RolesChanged?.Invoke(w.Roles);
         CoHostsChanged?.Invoke(w.CoHosts);
@@ -296,6 +302,27 @@ public sealed class ScreenSession : IAsyncDisposable
     public Task SendGifAsync(Gif gif) => _conn.SendAsync("chat.gif", new { url = gif.Url, width = gif.Width, height = gif.Height, title = gif.Title });
 
     public Task ReactAsync(string emoji) => _conn.SendAsync("react", new { emoji });
+
+    // ---- Subtitles (§17) ----------------------------------------------------------------------------
+
+    public static readonly string[] SubtitleFormats = ["srt", "vtt", "ass", "ssa"];
+
+    /// <summary>"srt", "vtt", "ass" or "ssa" from the file name, or null if it isn't a supported subtitle file.</summary>
+    public static string? SubtitleFormatOf(string path) =>
+        Path.GetExtension(path).TrimStart('.').ToLowerInvariant() is var ext && SubtitleFormats.Contains(ext) ? ext : null;
+
+    /// <summary>Shares a subtitle file for an item with everyone (needs <c>subtitles.share</c>). Only the file's name and contents are sent.</summary>
+    public async Task<SubMeta> ShareSubtitleAsync(string itemId, string path, CancellationToken ct = default)
+    {
+        string format = SubtitleFormatOf(path) ?? throw new TheatreException(400, "subtitles must be .srt, .vtt, .ass or .ssa");
+        byte[] content = await File.ReadAllBytesAsync(path, ct);
+        return await _api!.UploadSubtitleAsync(Code, _identity!.TokenFor(_screenId), itemId, Path.GetFileName(path), format, content, ct);
+    }
+
+    public Task<byte[]> DownloadSubtitleAsync(SubMeta sub, CancellationToken ct = default) =>
+        _api!.DownloadSubtitleAsync(Code, _identity!.TokenFor(_screenId), sub.Id, ct);
+
+    public Task UnshareSubtitleAsync(string id) => _conn.SendAsync("subs.unshare", new { id });
 
     // ---- Screen settings & invites -------------------------------------------------------
 
@@ -404,6 +431,10 @@ public sealed class ScreenSession : IAsyncDisposable
                     if (_chat.Count > 100) _chat.RemoveAt(0);
                 }
                 ChatReceived?.Invoke(c.Data);
+                break;
+            case ServerMessage.SubsMsg sb:
+                Subs = sb.Data;
+                SubsChanged?.Invoke(sb.Data);
                 break;
             case ServerMessage.ReactMsg r:
                 ReactionReceived?.Invoke(r.Data);

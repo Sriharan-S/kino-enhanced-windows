@@ -134,6 +134,39 @@ public class LiveTheatreTests
         await host.CloseScreenAsync();
     }
 
+    [Fact]
+    public async Task Shared_subtitles_reach_viewers_intact()
+    {
+        if (Url is null) return;
+        var api = new TheatreApi(new Uri(Url));
+        var (host, created) = await ScreenSession.CreateAsync(api, DeviceIdentity.LoadOrCreate("test-live-host"), new SimPlayer(),
+            new CreateScreenRequest("Subs test", "public"), "Host");
+        await using var _ = host;
+        await using var viewer = await ScreenSession.JoinResolvedAsync(api, DeviceIdentity.LoadOrCreate("test-live-viewer"), new SimPlayer(),
+            (await api.ResolveAsync(created.Code))!, "Viewer");
+        await host.AddToPlaylistAsync([ScreenSession.NewItem.Local("EP 1.mkv", 1400)]);
+        await WaitFor(host, () => host.Playlist.Count == 1);
+
+        string srt = "1\n00:00:01,000 --> 00:00:03,000\nHéllo, ünïcode ✓\n";
+        string path = Path.Combine(Path.GetTempPath(), $"kino-{Guid.NewGuid():N}.en.srt");
+        await File.WriteAllTextAsync(path, srt);
+        try
+        {
+            var meta = await host.ShareSubtitleAsync(host.Playlist[0].Id, path);
+            await WaitFor(viewer, () => viewer.Subs.Any(s => s.Id == meta.Id));
+            byte[] got = await viewer.DownloadSubtitleAsync(viewer.Subs.Single());
+            Assert.Equal(srt, System.Text.Encoding.UTF8.GetString(got));
+
+            var denied = await Assert.ThrowsAsync<TheatreException>(() => viewer.ShareSubtitleAsync(host.Playlist[0].Id, path));
+            Assert.Equal(403, denied.Status); // viewers lack subtitles.share by default
+        }
+        finally
+        {
+            File.Delete(path);
+            await host.CloseScreenAsync();
+        }
+    }
+
     private static async Task WaitFor(ScreenSession s, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

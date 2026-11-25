@@ -70,6 +70,16 @@ The **Playlist** tab in the side panel holds the screen's items: local files and
 - If a file can't be played, Kino says why, and names the codec if a decoder is missing.
 - Crashes are written to `%LOCALAPPDATA%\Kino\crash.log`.
 
+## Subtitles
+
+**Subtitles** (transport bar) lets you choose, for each video: **off**, a track **in the file**, any file someone
+**shared** with the screen, or **your own** file (`.srt`, `.vtt`, `.ass`, `.ssa`). A same-named subtitle file next to the
+video is picked up automatically.
+
+- **Also share with viewers** (with `subtitles.share`) uploads the file, compressed (1 MB at most). Everyone can then
+  pick it, and chat announces it. It belongs to that playlist item only.
+- **Timing offset** (per file) and the **look** (font, size, colour, outline, background box, position) stay on your PC.
+
 ## Chat
 
 The **Chat** tab has text chat (500 characters), GIFs and reactions. Reactions float briefly over the video. System lines

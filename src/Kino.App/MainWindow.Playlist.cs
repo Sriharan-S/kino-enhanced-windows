@@ -89,6 +89,7 @@ public sealed partial class MainWindow
         if (_loadingPath is null && _loadedPath == source && !double.IsNaN(_player.Duration))
         {
             s.Engine.LoadedItemId = item.Id; // already playing this file (e.g. opened before joining)
+            _ = RunSubtitleHooksAsync();
             return;
         }
 
@@ -112,7 +113,7 @@ public sealed partial class MainWindow
         if (_session is { } s && _loadingItemId is { } id)
         {
             _loadingItemId = null;
-            if (s.CurrentItem?.Id == id) s.Engine.LoadedItemId = id;
+            if (s.CurrentItem?.Id == id) { s.Engine.LoadedItemId = id; _ = RunSubtitleHooksAsync(); }
             else EnsureCurrentLoaded(); // the current item changed while loading
         }
     }

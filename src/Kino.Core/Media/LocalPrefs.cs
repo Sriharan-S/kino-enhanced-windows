@@ -22,6 +22,10 @@ public sealed class LocalPrefs
 
     public Dictionary<string, ResumeEntry> Resume { get; set; } = [];
 
+    /// <summary>How subtitles look (global) and each file's subtitle timing offset in ms (spec §17.4).</summary>
+    public SubtitleStyle Subtitles { get; set; } = new();
+    public Dictionary<string, double> SubtitleOffsets { get; set; } = [];
+
     public sealed record ResumeEntry(double Position, double? Duration, DateTimeOffset UpdatedAt);
 
     /// <summary>Paths compare case-insensitively on Windows; links as-is.</summary>
