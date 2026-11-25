@@ -50,6 +50,7 @@ public sealed partial class MainWindow
         ScreenPanel.Visibility = page == Page.Screen ? Visibility.Visible : Visibility.Collapsed;
         _videoHost.Visible = page == Page.Video;
         OverlayPopup.IsOpen = page == Page.Video && OverlayToggle.IsChecked == true;
+        ReactionPopup.IsOpen = page == Page.Video && _session is not null;
         LobbyButton.Content = page == Page.Video ? "Lobby" : "Back to video";
 
         if (_lobbyTimer is null)

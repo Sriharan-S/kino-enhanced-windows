@@ -39,6 +39,14 @@ public sealed class ScreenSession : IAsyncDisposable
     public ScreenInfo? Screen { get; private set; }
     public Item? CurrentItem { get; private set; }
     public IReadOnlyList<Item> Playlist { get; private set; } = [];
+
+    /// <summary>Recent chat, oldest first (the theatre keeps the last 100).</summary>
+    public IReadOnlyList<ChatMessage> Chat { get { lock (_chatLock) return [.. _chat]; } }
+    private List<ChatMessage> _chat = [];
+    private readonly Lock _chatLock = new();
+
+    /// <summary>The fixed reaction set (spec §18).</summary>
+    public static readonly string[] Reactions = ["👍", "❤️", "😂", "😮", "😢", "🔥", "👏", "🎉"];
     public IReadOnlyList<ViewerInfo> Viewers { get; private set; } = [];
     public IReadOnlyList<Role> Roles { get; private set; } = [];
 
@@ -61,6 +69,12 @@ public sealed class ScreenSession : IAsyncDisposable
 
     public event Action<Item?>? ItemChanged;
     public event Action<IReadOnlyList<Item>>? PlaylistChanged;
+    public event Action<ChatMessage>? ChatReceived;
+
+    /// <summary>The whole history was replaced (join or reconnect).</summary>
+    public event Action? ChatReset;
+
+    public event Action<Reaction>? ReactionReceived;
     public event Action<IReadOnlyList<ViewerInfo>>? ViewersChanged;
     public event Action<IReadOnlyList<Role>>? RolesChanged;
     public event Action<IReadOnlyList<CoHostInfo>>? CoHostsChanged;
@@ -178,6 +192,7 @@ public sealed class ScreenSession : IAsyncDisposable
         Code = w.Screen.Code;
         CurrentItem = w.Item;
         Playlist = w.Playlist;
+        lock (_chatLock) _chat = [.. w.Chat];
         Roles = w.Roles;
         CoHosts = w.CoHosts;
         SetViewers(w.Viewers, w.Self);
@@ -185,6 +200,7 @@ public sealed class ScreenSession : IAsyncDisposable
         if (!notify) return;
         ScreenChanged?.Invoke(w.Screen);
         PlaylistChanged?.Invoke(w.Playlist);
+        ChatReset?.Invoke();
         ItemChanged?.Invoke(w.Item);
         RolesChanged?.Invoke(w.Roles);
         CoHostsChanged?.Invoke(w.CoHosts);
@@ -271,6 +287,15 @@ public sealed class ScreenSession : IAsyncDisposable
     public Task SkipAsync(bool next) => _conn.SendAsync("skip", new { direction = next ? "next" : "previous" });
 
     public Task SetAutoAdvanceAsync(bool on) => _conn.SendAsync("settings.update", new { autoAdvance = on });
+
+    // ---- Chat (§18) ------------------------------------------------------------------------------
+
+    public Task SendChatAsync(string text) => _conn.SendAsync("chat.send", new { text });
+
+    /// <summary>Only the GIF's URL (and size) is sent; the theatre accepts URLs from GIF services only.</summary>
+    public Task SendGifAsync(Gif gif) => _conn.SendAsync("chat.gif", new { url = gif.Url, width = gif.Width, height = gif.Height, title = gif.Title });
+
+    public Task ReactAsync(string emoji) => _conn.SendAsync("react", new { emoji });
 
     // ---- Screen settings & invites -------------------------------------------------------
 
@@ -370,6 +395,18 @@ public sealed class ScreenSession : IAsyncDisposable
             case ServerMessage.PlaylistMsg pl:
                 Playlist = pl.Data;
                 PlaylistChanged?.Invoke(pl.Data);
+                break;
+            case ServerMessage.ChatMsg c:
+                lock (_chatLock)
+                {
+                    if (_chat.Any(m => m.Id == c.Data.Id)) break; // already in a welcome snapshot
+                    _chat.Add(c.Data);
+                    if (_chat.Count > 100) _chat.RemoveAt(0);
+                }
+                ChatReceived?.Invoke(c.Data);
+                break;
+            case ServerMessage.ReactMsg r:
+                ReactionReceived?.Invoke(r.Data);
                 break;
             case ServerMessage.ItemMsg i:
                 CurrentItem = i.Data;

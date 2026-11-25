@@ -33,10 +33,18 @@ public sealed partial class MainWindow
 
     private void OnSideTabChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        bool playlist = sender.SelectedItem == PlaylistTab;
-        ViewersSection.Visibility = playlist ? Visibility.Collapsed : Visibility.Visible;
-        PlaylistSection.Visibility = playlist ? Visibility.Visible : Visibility.Collapsed;
-        if (playlist) RenderPlaylist();
+        var tab = sender.SelectedItem;
+        ViewersSection.Visibility = tab == ViewersTab ? Visibility.Visible : Visibility.Collapsed;
+        PlaylistSection.Visibility = tab == PlaylistTab ? Visibility.Visible : Visibility.Collapsed;
+        ChatSection.Visibility = tab == ChatTab ? Visibility.Visible : Visibility.Collapsed;
+        if (tab == PlaylistTab) RenderPlaylist();
+        if (tab == ChatTab)
+        {
+            _unread = 0;
+            ChatTab.Text = "Chat";
+            if (_chatItems.Count > 0) ChatList.ScrollIntoView(_chatItems[^1]);
+            ChatInput.Focus(FocusState.Programmatic);
+        }
     }
 
     // ---- Session hooks ---------------------------------------------------------------------------

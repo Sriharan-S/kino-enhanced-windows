@@ -4,7 +4,7 @@ namespace Kino;
 /// Command-line options. Mostly for development and automated sync tests:
 ///   Kino.exe [media | kino://join/theatre/CODE] [--profile p] [--theatre url | --directory url] [--name n] [--create "Screen"] [--join CODE]
 ///            [--autoplay] [--codefile path] [--synclog path] [--perturb seconds] [--perturb-after seconds]
-///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles|screen|playlist]
+///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles|screen|playlist|chat]
 /// By default the theatre list comes from the directory (servers.json). --theatre uses only that one theatre instead,
 /// e.g. a local `wrangler dev` at http://127.0.0.1:8787.
 /// </summary>

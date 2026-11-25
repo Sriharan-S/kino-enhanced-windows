@@ -57,6 +57,17 @@ The **Playlist** tab in the side panel holds the screen's items: local files and
 - When an item ends, the theatre moves everyone to the next one (or stops, if *When an item ends* is set to *Stop* in
   Invite & settings). If your copy is shorter, you wait at its end. ⏮ / ⏭ skip with `playback.skip`.
 
+## Chat
+
+The **Chat** tab has text chat (500 characters), GIFs and reactions. Reactions float briefly over the video. System lines
+show joins, leaves, role and host changes, and what's now playing. People who join later see the last 100 messages.
+
+- **GIFs** are searched on GIPHY straight from your PC; only the chosen GIF's link is sent to the screen. GIPHY needs a
+  free API key: in the GIF picker, paste a key from [developers.giphy.com](https://developers.giphy.com) (Create an app → API).
+  It is saved in `%LOCALAPPDATA%\Kino\settings.json`, or you can set `KINO_GIPHY_KEY`. Without a key, paste a GIF link into
+  the message box.
+- Sending needs `chat.send`, `chat.gif` or `chat.react` (everyone has them by default). Muted viewers can't send anything.
+
 ## Invites, settings and reconnecting
 
 - **Invite & settings…** (in the viewers panel) shows the screen code and its invite link, for example

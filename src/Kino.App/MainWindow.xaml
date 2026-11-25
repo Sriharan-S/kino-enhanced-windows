@@ -50,6 +50,7 @@
                 <SelectorBar x:Name="SideTabs" Grid.Row="0" SelectionChanged="OnSideTabChanged">
                     <SelectorBarItem x:Name="ViewersTab" Text="Viewers" IsSelected="True" />
                     <SelectorBarItem x:Name="PlaylistTab" Text="Playlist" />
+                    <SelectorBarItem x:Name="ChatTab" Text="Chat" />
                 </SelectorBar>
 
                 <Grid x:Name="ViewersSection" Grid.Row="1" RowSpacing="8">
@@ -85,6 +86,77 @@
                     <Button x:Name="RolesButton" Content="Roles…" Click="OnRolesClick" />
                     <Button x:Name="CloseScreenButton" Content="Close screen" Click="OnCloseScreenClick" />
                 </StackPanel>
+                </Grid>
+
+                <Grid x:Name="ChatSection" Grid.Row="1" RowSpacing="6" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ListView x:Name="ChatList" Grid.Row="0" SelectionMode="None">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="4,2" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:ChatRow">
+                                <StackPanel Padding="0,4" Spacing="2">
+                                    <TextBlock Visibility="{x:Bind HeaderVisibility}" FontSize="12">
+                                        <Run Text="{x:Bind Name}" FontWeight="SemiBold" Foreground="{x:Bind NameBrush}" />
+                                        <Run Text="{x:Bind Time}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                               Visibility="{x:Bind TextVisibility}" Opacity="{x:Bind TextOpacity}"
+                                               FontStyle="{x:Bind TextStyle}" FontSize="{x:Bind TextSize}" />
+                                    <Image Source="{x:Bind GifSource}" Visibility="{x:Bind GifVisibility}" MaxHeight="150"
+                                           MaxWidth="250" HorizontalAlignment="Left" Stretch="Uniform" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel x:Name="ReactionBar" Grid.Row="1" Orientation="Horizontal" Spacing="2" />
+
+                    <Grid x:Name="GifPicker" Grid.Row="2" RowSpacing="6" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBox x:Name="GifSearchBox" Grid.Row="0" PlaceholderText="Search GIFs" KeyUp="OnGifSearchKeyUp" />
+                        <StackPanel x:Name="GifKeyRow" Grid.Row="1" Spacing="6" Visibility="Collapsed">
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                                       Text="GIF search uses GIPHY, which needs a free API key (developers.giphy.com → Create an app → API). It stays on this PC. You can also paste a GIF link into the message box." />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBox x:Name="GifKeyBox" PlaceholderText="GIPHY API key" Width="180" />
+                                <Button Content="Save" Click="OnSaveGifKeyClick" />
+                            </StackPanel>
+                        </StackPanel>
+                        <GridView x:Name="GifResults" Grid.Row="2" MaxHeight="220" SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemClick="OnGifClick">
+                            <GridView.ItemTemplate>
+                                <DataTemplate x:DataType="local:GifTile">
+                                    <Image Source="{x:Bind Preview}" Width="80" Height="60" Stretch="UniformToFill" />
+                                </DataTemplate>
+                            </GridView.ItemTemplate>
+                        </GridView>
+                    </Grid>
+
+                    <Grid Grid.Row="3" ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ChatInput" PlaceholderText="Message" MaxLength="500" KeyUp="OnChatInputKeyUp" />
+                        <ToggleButton x:Name="GifToggle" Grid.Column="1" Content="GIF" Click="OnGifToggle" />
+                        <Button x:Name="SendChatButton" Grid.Column="2" Content="Send" Click="OnSendChatClick"
+                                Style="{ThemeResource AccentButtonStyle}" />
+                    </Grid>
                 </Grid>
 
                 <Grid x:Name="PlaylistSection" Grid.Row="1" RowSpacing="8" Visibility="Collapsed">
@@ -359,6 +431,11 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+
+        <!-- Floating reactions over the video (windowed popup, like the sync overlay). -->
+        <Popup x:Name="ReactionPopup" ShouldConstrainToRootBounds="False" IsHitTestVisible="False">
+            <StackPanel x:Name="ReactionStack" Spacing="4" />
+        </Popup>
 
         <!-- Sync overlay: a windowed popup renders in its own HWND, so it sits above the video. -->
         <Popup x:Name="OverlayPopup" ShouldConstrainToRootBounds="False">

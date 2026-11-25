@@ -163,6 +163,7 @@ public sealed partial class MainWindow : Window
         });
 
         AttachPlaylist(s);
+        AttachChat(s);
         OnItemChanged(s.CurrentItem);
 
         // A file opened before joining: the host of a new, empty screen makes it the first item; anyone else
@@ -170,13 +171,14 @@ public sealed partial class MainWindow : Window
         if (_loadedPath is { } path && !path.Contains("://"))
             _ = OfferFilesAsync([path], addToPlaylist: s.Playlist.Count == 0, openNow: true);
 
-        if (_opt.Panel is "viewers" or "roles" or "playlist")
+        if (_opt.Panel is "viewers" or "roles" or "playlist" or "chat")
         {
             ViewersToggle.IsChecked = true;
             OnViewersToggle(this, new RoutedEventArgs());
         }
         if (_opt.Panel == "roles") OpenRolesPage(null);
         if (_opt.Panel == "playlist") SideTabs.SelectedItem = PlaylistTab;
+        if (_opt.Panel == "chat") SideTabs.SelectedItem = ChatTab;
         if (_opt.Panel == "screen") OnScreenClick(this, new RoutedEventArgs());
     }
 
@@ -190,6 +192,7 @@ public sealed partial class MainWindow : Window
         PlayPauseButton.IsEnabled = s.Can(Permissions.PlaybackToggle);
         SeekSlider.IsEnabled = s.Can(Permissions.PlaybackSeek);
         RenderViewers();
+        UpdateChatPermissions();
         if (_page == Page.Roles) RefreshRolesPage();
         if (_page == Page.Screen) RenderScreenPage(resetFields: false);
     }
@@ -207,6 +210,7 @@ public sealed partial class MainWindow : Window
         SideColumn.Width = new GridLength(0);
         if (_page is Page.Roles or Page.Screen) ShowPage(Page.Video);
         _loadingItemId = null;
+        DetachChat();
         PlaylistList.ItemsSource = null;
         PreviousButton.Visibility = NextButton.Visibility = Visibility.Collapsed;
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
@@ -299,6 +303,8 @@ public sealed partial class MainWindow : Window
 
         OverlayPopup.HorizontalOffset = origin.X + 16;
         OverlayPopup.VerticalOffset = origin.Y + 16;
+        ReactionPopup.HorizontalOffset = origin.X + 16;
+        ReactionPopup.VerticalOffset = origin.Y + Math.Max(0, VideoArea.ActualHeight - 16 - ReactionStack.Children.Count * 40);
     }
 
     private void OnPosition(double pos)
