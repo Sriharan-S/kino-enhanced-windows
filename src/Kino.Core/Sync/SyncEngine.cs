@@ -41,6 +41,8 @@ public sealed class SyncEngine
     private double _appliedSpeed = 1.0;
     private long _scheduledStartSeq = -1;
     private bool _calibrateAfterSeek;
+    private bool _checkJump;        // first playing step after a new anchor: obey a big jump at once
+    private double? _anchorJump;    // |E_new − E_old| at arrival; null when there was no comparable previous anchor
     private readonly Queue<double> _seekLatencies = new();
 
     public SyncEngine(IPlayback player, Func<double> theatreNowMs, Func<double> localNowMs,
@@ -71,14 +73,27 @@ public sealed class SyncEngine
 
     public Anchor? Anchor { get { lock (_gate) return _anchor; } }
 
+    /// <summary>
+    /// Applies a new anchor and acts on it immediately. Waiting for the next <see cref="Tick"/> (250 ms) could miss
+    /// a scheduled start entirely, because the theatre's minimum lead is only 200 ms.
+    /// </summary>
     public void ApplyAnchor(Anchor anchor)
     {
         lock (_gate)
         {
-            if (_anchor is not null && anchor.Seq < _anchor.Seq) return; // stale
-            bool changed = _anchor is null || anchor.Seq != _anchor.Seq;
+            var prev = _anchor;
+            if (prev is not null && anchor.Seq < prev.Seq) return; // stale
+            if (prev is not null && anchor.Seq == prev.Seq) { _anchor = anchor; return; }
+
+            double now = _theatreNowMs();
+            _anchorJump = prev is null || prev.ItemId != anchor.ItemId
+                ? null
+                : Math.Abs(anchor.ExpectedAt(now) - prev.ExpectedAt(now));
             _anchor = anchor;
-            if (changed) Disrupt(_localNowMs());
+            _checkJump = true;
+            _lastHardSeek = double.NegativeInfinity; // the throttle stops seek loops, not deliberate host seeks
+            Disrupt(_localNowMs());
+            Status = Step(0);
         }
     }
 
@@ -149,7 +164,21 @@ public sealed class SyncEngine
             }
             _player.SetPaused(false);
             Disrupt(local);
+            _checkJump = false;
             return new(SyncZone.Starting, pos - expected, _appliedSpeed, SeekLatency);
+        }
+
+        // ---- First playing step after a new anchor that arrived too late for its scheduled start (lag spike,
+        //      slow network). Obey a real jump right away instead of settling and measuring first.
+        //      Host: any jump the anchor made, since it never bends its playback and would otherwise re-anchor
+        //      straight back, undoing its own seek. Viewer: only gaps that rate correction can't close smoothly.
+        if (_checkJump)
+        {
+            _checkJump = false;
+            double gap = Math.Abs(pos - expected);
+            bool obey = gap > _s.HardSeek ||
+                        (IsHost && _anchorJump > _s.EnterCorrection && gap > _s.EnterCorrection);
+            if (obey) return HardSeek(expected, pos - expected, local);
         }
 
         if (local - _lastDisruption < _s.Settle.TotalMilliseconds)
@@ -183,13 +212,14 @@ public sealed class SyncEngine
         }
 
         // ---- Viewer: hard seek when far off, otherwise smooth rate correction.
-        if (Math.Abs(drift) > _s.HardSeek && local - _lastHardSeek > _s.MinHardSeekInterval.TotalMilliseconds)
+        if (Math.Abs(drift) > _s.HardSeek)
         {
-            _lastHardSeek = local;
+            if (local - _lastHardSeek > _s.MinHardSeekInterval.TotalMilliseconds)
+                return HardSeek(expected, drift, local);
+
+            // Throttled (repeated local jumps): wait at normal speed. Bending speed can't close a gap this
+            // big in any reasonable time, and would leave a lingering slowdown after the next seek.
             ResetRate();
-            _player.Seek(Math.Max(0, expected + SeekLatency));
-            _calibrateAfterSeek = true;
-            Disrupt(local);
             return new(SyncZone.Seeking, drift, 1, SeekLatency);
         }
 
@@ -200,6 +230,16 @@ public sealed class SyncEngine
             _appliedSpeed = rate;
         }
         return new(_rate.Correcting ? SyncZone.Correcting : SyncZone.InSync, drift, _appliedSpeed, SeekLatency);
+    }
+
+    private SyncStatus HardSeek(double expected, double drift, double local)
+    {
+        _lastHardSeek = local;
+        ResetRate();
+        _player.Seek(Math.Max(0, expected + SeekLatency));
+        _calibrateAfterSeek = true;
+        Disrupt(local);
+        return new(SyncZone.Seeking, drift, 1, SeekLatency);
     }
 
     private void Disrupt(double local)

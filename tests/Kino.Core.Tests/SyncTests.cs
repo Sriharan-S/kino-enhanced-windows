@@ -183,6 +183,81 @@ public class SyncEngineTests
         Assert.Empty(h.Player.SpeedHistory);
     }
 
+    // ---- Regressions from the first live test against a deployed theatre ------------------------------------
+
+    [Fact]
+    public void New_anchor_is_applied_on_arrival_not_on_the_next_tick()
+    {
+        // The theatre's minimum lead (200 ms) is shorter than a tick (250 ms), so waiting for Tick can miss the
+        // scheduled-start window entirely.
+        var h = new SimHarness();
+        h.Player.Pos = 10; h.Player.Paused = false;
+        h.Engine.ApplyAnchor(Playing(10, h.TheatreMs));
+        h.Run(2);
+
+        h.Engine.ApplyAnchor(Playing(50, h.TheatreMs + 200, seq: 2));
+
+        Assert.True(h.Player.Paused);          // holding for the scheduled start...
+        Assert.Equal(50, h.Player.Pos, 3);     // ...already at the new position
+        h.Run(2);
+        Assert.InRange(h.TrueDrift, -0.03, 0.03);
+    }
+
+    [Fact]
+    public void Host_obeys_a_seek_that_arrives_after_its_start_time()
+    {
+        var h = new SimHarness();
+        h.Engine.IsHost = true;
+        var reanchors = new List<double>();
+        h.Engine.ReanchorRequested += (pos, _) => reanchors.Add(pos);
+        h.Player.Pos = 104; h.Player.Paused = false;
+        h.Engine.ApplyAnchor(Playing(104, h.TheatreMs));
+        h.Run(2);
+
+        h.Engine.ApplyAnchor(Playing(165.6, h.TheatreMs - 100, seq: 2)); // start time already passed
+        h.Run(4);
+
+        Assert.InRange(h.TrueDrift, -0.25, 0.25);
+        Assert.DoesNotContain(reanchors, p => p < 160); // never re-anchors back to where it was
+    }
+
+    [Fact]
+    public void Viewer_follows_back_to_back_seeks_without_waiting_for_the_throttle()
+    {
+        var h = new SimHarness();
+        h.Player.Pos = 104; h.Player.Paused = false;
+        h.Engine.ApplyAnchor(Playing(104, h.TheatreMs));
+        h.Run(2);
+
+        h.Engine.ApplyAnchor(Playing(165.6, h.TheatreMs - 50, seq: 2));
+        h.Run(1.5);
+        h.Engine.ApplyAnchor(Playing(106.2, h.TheatreMs - 50, seq: 3));
+        h.Run(2);
+
+        Assert.InRange(h.TrueDrift, -0.25, 0.25);
+        Assert.All(h.Player.SpeedHistory, s => Assert.InRange(s, 0.99, 1.01)); // never "rate-corrects" a 60 s gap
+    }
+
+    [Fact]
+    public void Viewer_far_off_does_not_rate_correct_while_hard_seeks_are_throttled()
+    {
+        var h = new SimHarness();
+        h.Player.Pos = 10; h.Player.Paused = false;
+        h.Engine.ApplyAnchor(Playing(10, h.TheatreMs));
+        h.Run(3);
+
+        // Two local jumps (no new anchor), the second inside the 5 s hard-seek throttle window.
+        h.Player.Seek(h.Player.Pos + 60);
+        h.Run(2);                              // engine hard-seeks back after the settle period
+        Assert.Equal(2, h.Player.Seeks);
+        h.Player.Seek(h.Player.Pos + 60);
+        h.Run(8);
+
+        Assert.InRange(h.TrueDrift, -0.25, 0.25);
+        Assert.All(h.Player.SpeedHistory, s => Assert.InRange(s, 0.998, 1.002)); // waits; doesn't bend speed
+
+    }
+
     [Fact]
     public void Stale_anchors_are_ignored()
     {
