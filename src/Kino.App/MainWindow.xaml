@@ -172,7 +172,8 @@
                     </Grid.RowDefinitions>
                     <TextBlock x:Name="PlaylistHeader" Grid.Row="0" Text="Playlist" Style="{ThemeResource BodyStrongTextBlockStyle}" />
                     <ListView x:Name="PlaylistList" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemClick="OnPlaylistItemClick">
+                              ItemClick="OnPlaylistItemClick" DragItemsStarting="OnPlaylistDragStarting"
+                              DragItemsCompleted="OnPlaylistDragCompleted">
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="local:PlaylistRow">
                                 <StackPanel Padding="0,6">

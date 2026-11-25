@@ -272,9 +272,11 @@ public sealed partial class MainWindow
             PlaylistList.ItemsSource = null;
             return;
         }
-        var rows = s.Playlist.Select((item, i) =>
-            new PlaylistRow(item, i, item.Id == s.CurrentItem?.Id, _mapping.GetValueOrDefault(item.Id))).ToList();
-        PlaylistList.ItemsSource = rows;
+        var rows = new System.Collections.ObjectModel.ObservableCollection<PlaylistRow>(s.Playlist.Select((item, i) =>
+            new PlaylistRow(item, i, item.Id == s.CurrentItem?.Id, _mapping.GetValueOrDefault(item.Id))));
+        PlaylistList.ItemsSource = rows; // observable, so ListView can reorder it by drag and drop
+        bool reorder = s.Can(Permissions.PlaylistReorder);
+        PlaylistList.CanDragItems = PlaylistList.CanReorderItems = PlaylistList.AllowDrop = reorder;
         int warnings = rows.Count(r => r.Warn);
         PlaylistHeader.Text = s.Playlist.Count == 0 ? "Playlist (empty)"
             : warnings > 0 ? $"Playlist ({s.Playlist.Count}) · {warnings} need attention"
@@ -286,6 +288,24 @@ public sealed partial class MainWindow
         int index = s.Playlist.ToList().FindIndex(i => i.Id == s.CurrentItem?.Id);
         PreviousButton.IsEnabled = index > 0;
         NextButton.IsEnabled = index >= 0 && index < s.Playlist.Count - 1;
+    }
+
+    // ---- Drag-and-drop reorder (§13.3, playlist.reorder) ---------------------------------------------
+
+    private string? _draggedItemId;
+
+    private void OnPlaylistDragStarting(object sender, DragItemsStartingEventArgs e) =>
+        _draggedItemId = (e.Items.FirstOrDefault() as PlaylistRow)?.Item.Id;
+
+    /// <summary>ListView has already moved the row locally; tell the theatre, whose playlist message then re-renders.</summary>
+    private async void OnPlaylistDragCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        if (_session is not { } s || _draggedItemId is not { } id || PlaylistList.ItemsSource is not IList<PlaylistRow> rows) return;
+        _draggedItemId = null;
+        int to = rows.ToList().FindIndex(r => r.Item.Id == id);
+        int from = s.Playlist.ToList().FindIndex(i => i.Id == id);
+        if (to >= 0 && to != from) await s.MoveItemAsync(id, to);
+        else RenderPlaylist();
     }
 
     private void ShowPlaylistStatus(string? text)
