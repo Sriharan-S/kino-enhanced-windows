@@ -17,6 +17,8 @@ internal sealed class SimPlayer : IPlayback
     public List<double> SpeedHistory { get; } = [];
 
     public double? Position => Pos;
+    public double? Length { get; set; }
+    public double? MediaDuration => Length;
     public bool IsPaused => Paused;
     public bool IsBuffering => Buffering;
 
@@ -42,6 +44,7 @@ internal sealed class SimPlayer : IPlayback
         if (Paused || Buffering) return;
         double playable = Math.Max(0, NowSeconds - Math.Max(start, _frozenUntil));
         Pos += Speed * Math.Min(dt, playable);
+        if (Length is double len && Pos >= len) { Pos = len; Paused = true; } // keep-open: stop on the last frame
     }
 }
 

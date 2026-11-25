@@ -7,6 +7,9 @@ public interface IPlayback
 {
     /// <summary>Current position in seconds, or null when nothing is loaded.</summary>
     double? Position { get; }
+
+    /// <summary>Length of the loaded file in seconds, or null if unknown.</summary>
+    double? MediaDuration { get; }
     bool IsPaused { get; }
     bool IsBuffering { get; }
     void SetPaused(bool paused);
@@ -14,7 +17,11 @@ public interface IPlayback
     void SetSpeed(double speed);
 }
 
-public enum SyncZone { Idle, Paused, Starting, Settling, InSync, Correcting, Seeking, Buffering, Host }
+/// <summary>
+/// <see cref="Waiting"/>: this copy has ended before the screen's timeline (a shorter file); holds until the next anchor.
+/// <see cref="NoFile"/>: the current item has no file loaded here yet (unmapped, or still loading).
+/// </summary>
+public enum SyncZone { Idle, Paused, Starting, Settling, InSync, Correcting, Seeking, Buffering, Host, Waiting, NoFile }
 
 public readonly record struct SyncStatus(SyncZone Zone, double Drift, double Rate, double SeekLatency);
 
@@ -62,6 +69,15 @@ public sealed class SyncEngine
     /// anchor is never applied against an unsynced clock.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// When true, the engine only drives the player if <see cref="LoadedItemId"/> is the anchor's item. Otherwise it would
+    /// apply the new item's timeline to the previous file while the new one loads.
+    /// </summary>
+    public bool RequireLoadedItem { get; set; }
+
+    /// <summary>The playlist item whose file is loaded in the player (set by the app).</summary>
+    public string? LoadedItemId { get; set; }
 
     /// <summary>The host's real playback defines the truth: it re-anchors instead of correcting itself.</summary>
     public bool IsHost { get; set; }
@@ -112,7 +128,14 @@ public sealed class SyncEngine
     {
         var a = _anchor;
         double? posOrNull = _player.Position;
-        if (a is null || posOrNull is not double pos) return new(SyncZone.Idle, 0, _appliedSpeed, SeekLatency);
+        if (a is null) return new(SyncZone.Idle, 0, _appliedSpeed, SeekLatency);
+        if (RequireLoadedItem && a.ItemId != LoadedItemId)
+        {
+            if (posOrNull is not null && !_player.IsPaused) _player.SetPaused(true); // don't play the previous file
+            ResetRate();
+            return new(SyncZone.NoFile, 0, 1, SeekLatency);
+        }
+        if (posOrNull is not double pos) return new(SyncZone.Idle, 0, _appliedSpeed, SeekLatency);
 
         double now = _theatreNowMs();
         double local = _localNowMs();
@@ -159,6 +182,20 @@ public sealed class SyncEngine
         }
 
         double expected = a.ExpectedAt(now) + offset;
+
+        // ---- This copy is over but the screen's timeline isn't (shorter file): wait for the next anchor (§14.12).
+        //      Before the host branch too: a host at its end must not re-anchor the screen backwards.
+        if (_player.MediaDuration is double length && expected >= length - EndMargin)
+        {
+            if (pos < length - EndMargin * 2 && !_player.IsPaused)
+            {
+                // Not at the end yet (e.g. just joined late): jump to the end and hold there.
+                _player.Seek(Math.Max(0, length - EndMargin));
+            }
+            if (!_player.IsPaused) _player.SetPaused(true);
+            ResetRate();
+            return new(SyncZone.Waiting, pos - expected, 1, SeekLatency);
+        }
 
         // ---- Should be playing but isn't (late join, missed scheduled start): jump in if needed and start.
         if (_player.IsPaused)
@@ -237,6 +274,9 @@ public sealed class SyncEngine
         }
         return new(_rate.Correcting ? SyncZone.Correcting : SyncZone.InSync, drift, _appliedSpeed, SeekLatency);
     }
+
+    /// <summary>How close to the end of a file counts as "at the end".</summary>
+    private const double EndMargin = 0.25;
 
     private SyncStatus HardSeek(double expected, double drift, double local)
     {

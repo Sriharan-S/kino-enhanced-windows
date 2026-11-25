@@ -28,7 +28,6 @@ public sealed partial class MainWindow : Window
     private ScreenSession? _session;
     private TheatreEntry? _sessionTheatre;
     private string? _loadedFileName;
-    private bool _announcePending;
     private bool _paused = true;
     private double _duration;
     private bool _seekDragging;
@@ -59,13 +58,13 @@ public sealed partial class MainWindow : Window
         _player.SetVolume(options.Volume); // the slider fired before the player existed
 
         _player.PositionChanged += pos => _ui.TryEnqueue(() => OnPosition(pos));
-        _player.DurationChanged += d => _ui.TryEnqueue(() => { _duration = d; SeekSlider.Maximum = Math.Max(1, d); TryAnnounceItem(); });
+        _player.DurationChanged += d => _ui.TryEnqueue(() => { _duration = d; SeekSlider.Maximum = Math.Max(1, d); });
         _player.PausedChanged += p => _ui.TryEnqueue(() =>
         {
             _paused = p;
             PlayPauseButton.Content = p || _loadedFileName is null ? "Play" : "Pause";
         });
-        _player.FileLoaded += _ => _ui.TryEnqueue(TryAnnounceItem);
+        _player.FileLoaded += _ => _ui.TryEnqueue(OnPlayerFileLoaded);
         _player.Error += msg => _ui.TryEnqueue(() => OverlayText.Text = msg);
 
         SeekSlider.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => _seekDragging = true), true);
@@ -163,16 +162,21 @@ public sealed partial class MainWindow : Window
             }
         });
 
+        AttachPlaylist(s);
         OnItemChanged(s.CurrentItem);
-        _announcePending = s.IsHost;
-        TryAnnounceItem();
 
-        if (_opt.Panel is "viewers" or "roles")
+        // A file opened before joining: the host of a new, empty screen makes it the first item; anyone else
+        // just offers it for matching against the playlist.
+        if (_loadedPath is { } path && !path.Contains("://"))
+            _ = OfferFilesAsync([path], addToPlaylist: s.Playlist.Count == 0, openNow: true);
+
+        if (_opt.Panel is "viewers" or "roles" or "playlist")
         {
             ViewersToggle.IsChecked = true;
             OnViewersToggle(this, new RoutedEventArgs());
         }
         if (_opt.Panel == "roles") OpenRolesPage(null);
+        if (_opt.Panel == "playlist") SideTabs.SelectedItem = PlaylistTab;
         if (_opt.Panel == "screen") OnScreenClick(this, new RoutedEventArgs());
     }
 
@@ -202,6 +206,9 @@ public sealed partial class MainWindow : Window
         ViewersToggle.IsChecked = false;
         SideColumn.Width = new GridLength(0);
         if (_page is Page.Roles or Page.Screen) ShowPage(Page.Video);
+        _loadingItemId = null;
+        PlaylistList.ItemsSource = null;
+        PreviousButton.Visibility = NextButton.Visibility = Visibility.Collapsed;
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
         OverlayTitle.Text = "Kino";
         OverlayText.Text = "Open a file or join a screen";
@@ -227,31 +234,10 @@ public sealed partial class MainWindow : Window
 
     private void OnItemChanged(Item? item)
     {
-        if (_session is null || item is null || item.Name == _loadedFileName) return;
-        OverlayTitle.Text = $"Host is playing: {item.Name}";
-        if (_loadedFileName is null) OverlayText.Text = "Open your copy of this file";
-    }
-
-    /// <summary>
-    /// Once a file is loaded and its duration known, make it the screen's item, if allowed. Opening your own copy of
-    /// the current item (same name) just plays along and doesn't replace it.
-    /// </summary>
-    private async void TryAnnounceItem()
-    {
-        if (_session is null || !_announcePending || _loadedFileName is null || !(_duration > 0)) return;
-        if (!_session.Can(Permissions.PlaylistAdd) || _session.CurrentItem?.Name == _loadedFileName)
-        {
-            _announcePending = false;
-            return;
-        }
-        _announcePending = false;
-        await _session.LoadLocalAsync(_loadedFileName, Math.Round(_duration, 3));
-        if (_opt.AutoPlay)
-        {
-            await Task.Delay(1500);
-            await _session.PlayAsync();
-            _ = RunScriptedSeeksAsync(_session);
-        }
+        if (_session is null) return;
+        if (item is not null) OverlayTitle.Text = $"Now playing: {item.Name}";
+        RenderPlaylist();
+        EnsureCurrentLoaded();
     }
 
     /// <summary>Test hook (--seeks): host seeks on a schedule, for repeatable live tests.</summary>
@@ -275,9 +261,10 @@ public sealed partial class MainWindow : Window
         if (_session is null) return;
         string rtt = double.IsNaN(_session.Clock.RttMs) ? "–" : $"{_session.Clock.RttMs:0} ms";
         OverlayTitle.Text = _session.IsHost ? "Host" : $"Viewer · {st.Zone}";
-        OverlayText.Text = _session.IsHost
+        string line = _session.IsHost
             ? $"rtt {rtt} · drift {st.Drift:+0.000;-0.000} s · {st.Zone}"
             : $"drift {st.Drift:+0.000;-0.000} s · {st.Rate:0.0000}× · rtt {rtt}";
+        OverlayText.Text = PlaylistOverlayHint(st.Zone) is { } hint ? $"{hint}\n{line}" : line;
 
         double qpc = Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
         double pos = _player.GetPosition();
@@ -337,21 +324,26 @@ public sealed partial class MainWindow : Window
         if (file is not null) OpenMedia(file.Path);
     }
 
+    /// <summary>
+    /// Outside a screen: play it here. In a screen: a local file is offered for matching, and becomes the current item if
+    /// you may add to the playlist and it isn't on it yet. A link is added to the playlist.
+    /// </summary>
     private void OpenMedia(string pathOrUrl)
     {
+        if (_session is { } s)
+        {
+            ShowLobby(false);
+            if (!pathOrUrl.Contains("://")) _ = OfferFilesAsync([pathOrUrl], addToPlaylist: true, openNow: true);
+            else if (s.Can(Permissions.PlaylistAddExternal)) _ = s.AddToPlaylistAsync([ScreenSession.NewItem.Link(pathOrUrl, pathOrUrl)]);
+            return;
+        }
+        _loadedPath = pathOrUrl;
+        _loadingPath = null;
         _loadedFileName = pathOrUrl.Contains("://") ? pathOrUrl : Path.GetFileName(pathOrUrl);
         _duration = 0;
         _player.Load(pathOrUrl);
         ShowLobby(false);
-        if (_session is null)
-        {
-            _player.SetPaused(false); // solo playback
-        }
-        else
-        {
-            _player.SetPaused(true); // the screen's anchor decides when to play
-            _announcePending = true; // TryAnnounceItem checks permission and whether it's the current item
-        }
+        _player.SetPaused(false); // solo playback
     }
 
     private async void OnPlayPauseClick(object sender, RoutedEventArgs e)

@@ -23,7 +23,10 @@ public sealed record Anchor(string? ItemId, string State, double Position, doubl
         !IsPlaying || nowMs <= At ? Position : Position + Rate * (nowMs - At) / 1000.0;
 }
 
-public sealed record Item(string Id, string Kind, string Name, double? Duration, string? Url);
+public sealed record Item(string Id, string Kind, string Name, double? Duration, string? Url)
+{
+    public bool IsLocal => Kind == "local";
+}
 
 public sealed record ViewerInfo(string Id, string Name, string? Device, bool IsHost, double? Rtt, bool Buffering)
 {
@@ -59,6 +62,7 @@ public sealed record Role(string Id, string Name, string? Colour, int Position, 
 public sealed record ScreenInfo(string Code, string Name, string Visibility, int MaxViewers, bool ShowDevices)
 {
     public bool Hidden { get; init; }
+    public bool AutoAdvance { get; init; } = true;
     public bool IsPrivate => Visibility == "private";
 }
 
@@ -66,6 +70,7 @@ public sealed record Welcome(ViewerInfo Self, ScreenInfo Screen, ViewerInfo[] Vi
 {
     public Role[] Roles { get; init; } = [];
     public CoHostInfo[] CoHosts { get; init; } = [];
+    public Item[] Playlist { get; init; } = [];
 }
 
 /// <summary>A co-host in priority order, present or not.</summary>
@@ -102,6 +107,7 @@ public abstract record ServerMessage
     public sealed record RolesMsg(Role[] Data) : ServerMessage;
     public sealed record CoHostsMsg(CoHostInfo[] Data) : ServerMessage;
     public sealed record ScreenMsg(ScreenInfo Data) : ServerMessage;
+    public sealed record PlaylistMsg(Item[] Data) : ServerMessage;
     public sealed record ErrorMsg(ServerError Data) : ServerMessage;
     public sealed record Unknown(string Type) : ServerMessage;
 
@@ -123,6 +129,7 @@ public abstract record ServerMessage
             "roles" => new RolesMsg(data.Deserialize<Role[]>(o)!),
             "cohosts" => new CoHostsMsg(data.Deserialize<CoHostInfo[]>(o)!),
             "screen" => new ScreenMsg(data.Deserialize<ScreenInfo>(o)!),
+            "playlist" => new PlaylistMsg(data.Deserialize<Item[]>(o)!),
             "error" => new ErrorMsg(data.Deserialize<ServerError>(o)!),
             _ => new Unknown(type),
         };

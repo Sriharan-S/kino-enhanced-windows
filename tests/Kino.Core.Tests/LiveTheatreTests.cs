@@ -113,6 +113,27 @@ public class LiveTheatreTests
         await host.CloseScreenAsync();
     }
 
+    [Fact]
+    public async Task Playlist_reaches_everyone_and_advances_on_the_theatre()
+    {
+        if (Url is null) return;
+        var api = new TheatreApi(new Uri(Url));
+        var (host, created) = await ScreenSession.CreateAsync(api, DeviceIdentity.LoadOrCreate("test-live-host"), new SimPlayer(),
+            new CreateScreenRequest("Playlist test", "public"), "Host");
+        await using var _ = host;
+        await using var viewer = await ScreenSession.JoinResolvedAsync(api, DeviceIdentity.LoadOrCreate("test-live-viewer"), new SimPlayer(),
+            (await api.ResolveAsync(created.Code))!, "Viewer");
+
+        await host.AddToPlaylistAsync([ScreenSession.NewItem.Local("EP 1.mkv", 2), ScreenSession.NewItem.Local("EP 2.mkv", 600)]);
+        await WaitFor(viewer, () => viewer.Playlist.Count == 2 && viewer.CurrentItem?.Name == "EP 1.mkv");
+
+        await host.PlayItemAsync(viewer.Playlist[0].Id);
+        await WaitFor(viewer, () => viewer.CurrentItem?.Name == "EP 2.mkv" && viewer.Engine.Anchor?.IsPlaying == true); // after ~2 s
+
+        await viewer.SkipAsync(next: false); // viewers can't skip
+        await host.CloseScreenAsync();
+    }
+
     private static async Task WaitFor(ScreenSession s, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

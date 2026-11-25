@@ -38,6 +38,7 @@ public sealed class ScreenSession : IAsyncDisposable
     public Welcome? Joined { get; private set; }
     public ScreenInfo? Screen { get; private set; }
     public Item? CurrentItem { get; private set; }
+    public IReadOnlyList<Item> Playlist { get; private set; } = [];
     public IReadOnlyList<ViewerInfo> Viewers { get; private set; } = [];
     public IReadOnlyList<Role> Roles { get; private set; } = [];
 
@@ -59,6 +60,7 @@ public sealed class ScreenSession : IAsyncDisposable
     public bool Can(string permission) => Self?.Can(permission) == true;
 
     public event Action<Item?>? ItemChanged;
+    public event Action<IReadOnlyList<Item>>? PlaylistChanged;
     public event Action<IReadOnlyList<ViewerInfo>>? ViewersChanged;
     public event Action<IReadOnlyList<Role>>? RolesChanged;
     public event Action<IReadOnlyList<CoHostInfo>>? CoHostsChanged;
@@ -175,12 +177,14 @@ public sealed class ScreenSession : IAsyncDisposable
         Screen = w.Screen;
         Code = w.Screen.Code;
         CurrentItem = w.Item;
+        Playlist = w.Playlist;
         Roles = w.Roles;
         CoHosts = w.CoHosts;
         SetViewers(w.Viewers, w.Self);
         Engine.ApplyAnchor(w.Anchor);
         if (!notify) return;
         ScreenChanged?.Invoke(w.Screen);
+        PlaylistChanged?.Invoke(w.Playlist);
         ItemChanged?.Invoke(w.Item);
         RolesChanged?.Invoke(w.Roles);
         CoHostsChanged?.Invoke(w.CoHosts);
@@ -248,6 +252,25 @@ public sealed class ScreenSession : IAsyncDisposable
 
     public Task LoadUrlAsync(string url, string name, double? duration) =>
         _conn.SendAsync("load", new { kind = "url", name, duration, url });
+
+    // ---- Playlist (§13) ----------------------------------------------------------------------
+
+    /// <summary>A playlist entry to add. Local files share only their name and duration, never the path.</summary>
+    public sealed record NewItem(string Kind, string Name, double? Duration, string? Url = null)
+    {
+        public static NewItem Local(string fileName, double? duration) => new("local", fileName, duration);
+        public static NewItem Link(string url, string name, double? duration = null) => new("url", name, duration, url);
+    }
+
+    public Task AddToPlaylistAsync(IEnumerable<NewItem> items, int? at = null) =>
+        _conn.SendAsync("playlist.add", new { items = items.Select(i => new { kind = i.Kind, name = i.Name, duration = i.Duration, url = i.Url }).ToArray(), at });
+
+    public Task RemoveItemAsync(string itemId) => _conn.SendAsync("playlist.remove", new { id = itemId });
+    public Task MoveItemAsync(string itemId, int to) => _conn.SendAsync("playlist.move", new { id = itemId, to });
+    public Task PlayItemAsync(string itemId) => _conn.SendAsync("playlist.play", new { id = itemId });
+    public Task SkipAsync(bool next) => _conn.SendAsync("skip", new { direction = next ? "next" : "previous" });
+
+    public Task SetAutoAdvanceAsync(bool on) => _conn.SendAsync("settings.update", new { autoAdvance = on });
 
     // ---- Screen settings & invites -------------------------------------------------------
 
@@ -343,6 +366,10 @@ public sealed class ScreenSession : IAsyncDisposable
             case ServerMessage.AnchorMsg a:
                 // Safe before clock sync completes: the engine stays disabled until then.
                 Engine.ApplyAnchor(a.Data);
+                break;
+            case ServerMessage.PlaylistMsg pl:
+                Playlist = pl.Data;
+                PlaylistChanged?.Invoke(pl.Data);
                 break;
             case ServerMessage.ItemMsg i:
                 CurrentItem = i.Data;

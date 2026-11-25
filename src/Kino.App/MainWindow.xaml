@@ -41,8 +41,18 @@
             <!-- The native video window is positioned exactly over this element. -->
             <Border x:Name="VideoArea" Grid.Column="0" Background="Black" />
 
-            <Grid x:Name="SidePanel" Grid.Column="1" Padding="12,8" RowSpacing="8"
+            <Grid x:Name="SidePanel" Grid.Column="1" Padding="12,4,12,8" RowSpacing="6"
                   Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <SelectorBar x:Name="SideTabs" Grid.Row="0" SelectionChanged="OnSideTabChanged">
+                    <SelectorBarItem x:Name="ViewersTab" Text="Viewers" IsSelected="True" />
+                    <SelectorBarItem x:Name="PlaylistTab" Text="Playlist" />
+                </SelectorBar>
+
+                <Grid x:Name="ViewersSection" Grid.Row="1" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -75,6 +85,48 @@
                     <Button x:Name="RolesButton" Content="Roles…" Click="OnRolesClick" />
                     <Button x:Name="CloseScreenButton" Content="Close screen" Click="OnCloseScreenClick" />
                 </StackPanel>
+                </Grid>
+
+                <Grid x:Name="PlaylistSection" Grid.Row="1" RowSpacing="8" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="PlaylistHeader" Grid.Row="0" Text="Playlist" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                    <ListView x:Name="PlaylistList" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemClick="OnPlaylistItemClick">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:PlaylistRow">
+                                <StackPanel Padding="0,6">
+                                    <TextBlock Text="{x:Bind Title}" FontWeight="{x:Bind Weight}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind Detail}" FontSize="12" Opacity="0.75" TextWrapping="Wrap"
+                                               Foreground="{x:Bind DetailBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel x:Name="AddLinkRow" Grid.Row="2" Spacing="6" Visibility="Collapsed">
+                        <TextBox x:Name="LinkBox" PlaceholderText="https://…/video.mp4" KeyUp="OnLinkKeyUp" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Add link" Click="OnAddLinkConfirm" Style="{ThemeResource AccentButtonStyle}" />
+                            <Button Content="Cancel" Click="OnAddLinkCancel" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Row="3" Spacing="6">
+                        <TextBlock x:Name="PlaylistStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" Visibility="Collapsed" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="AddFilesButton" Content="Add files…" Click="OnAddFilesClick" />
+                            <Button x:Name="AddFolderButton" Content="Add folder…" Click="OnAddFolderClick" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="AddLinkButton" Content="Add link…" Click="OnAddLinkClick" />
+                            <Button x:Name="MatchFilesButton" Content="Match my files…" Click="OnMatchFilesClick"
+                                    ToolTipService.ToolTip="Pick a folder with your copies; Kino matches them to the playlist" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Grid>
         </Grid>
 
@@ -295,6 +347,8 @@
                     <CheckBox x:Name="SettingsHiddenBox" Content="Hide from lobby (join by code only)" />
                     <ToggleSwitch x:Name="SettingsDevicesSwitch" Header="Viewers' devices" OnContent="Shown to everyone"
                                   OffContent="Hidden" />
+                    <ToggleSwitch x:Name="SettingsAutoAdvanceSwitch" Header="When an item ends" OnContent="Play the next one"
+                                  OffContent="Stop" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="SaveSettingsButton" Content="Save settings" Click="OnSaveSettingsClick"
                                 Style="{ThemeResource AccentButtonStyle}" />
@@ -328,7 +382,13 @@
             </Grid.ColumnDefinitions>
 
             <Button x:Name="OpenButton" Grid.Column="0" Content="Open…" Click="OnOpenClick" />
-            <Button x:Name="PlayPauseButton" Grid.Column="1" Content="Play" Click="OnPlayPauseClick" MinWidth="72" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <Button x:Name="PreviousButton" Content="&#x23EE;" Click="OnPreviousClick" Visibility="Collapsed"
+                        ToolTipService.ToolTip="Previous item" />
+                <Button x:Name="PlayPauseButton" Content="Play" Click="OnPlayPauseClick" MinWidth="72" />
+                <Button x:Name="NextButton" Content="&#x23ED;" Click="OnNextClick" Visibility="Collapsed"
+                        ToolTipService.ToolTip="Next item" />
+            </StackPanel>
             <Slider x:Name="SeekSlider" Grid.Column="2" VerticalAlignment="Center" Minimum="0" Maximum="1"
                     StepFrequency="0.1" IsThumbToolTipEnabled="False"
                     PointerCaptureLost="OnSeekCommitted" KeyUp="OnSeekKey" />

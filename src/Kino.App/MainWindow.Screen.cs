@@ -43,7 +43,7 @@ public sealed partial class MainWindow
         SettingsHint.Text = canEdit ? "Changes apply to everyone at once. Viewers already here keep their place."
                                     : "You can see the settings, but not change them.";
         SaveSettingsButton.Visibility = canEdit ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var c in new Control[] { SettingsNameBox, SettingsPrivateSwitch, SettingsMaxViewersBox, SettingsPasswordBox, SettingsHiddenBox, SettingsDevicesSwitch })
+        foreach (var c in new Control[] { SettingsNameBox, SettingsPrivateSwitch, SettingsMaxViewersBox, SettingsPasswordBox, SettingsHiddenBox, SettingsDevicesSwitch, SettingsAutoAdvanceSwitch })
             c.IsEnabled = canEdit;
 
         if (!resetFields) return;
@@ -52,6 +52,7 @@ public sealed partial class MainWindow
         SettingsMaxViewersBox.Value = screen.MaxViewers;
         SettingsHiddenBox.IsChecked = screen.Hidden;
         SettingsDevicesSwitch.IsOn = screen.ShowDevices;
+        SettingsAutoAdvanceSwitch.IsOn = screen.AutoAdvance;
         SettingsPasswordBox.Password = "";
         OnSettingsPrivateToggled(this, new RoutedEventArgs());
     }
@@ -83,6 +84,7 @@ public sealed partial class MainWindow
             hidden: priv ? SettingsHiddenBox.IsChecked == true : null,
             maxViewers: max == screen.MaxViewers ? null : max,
             showDevices: SettingsDevicesSwitch.IsOn == screen.ShowDevices ? null : SettingsDevicesSwitch.IsOn);
+        if (SettingsAutoAdvanceSwitch.IsOn != screen.AutoAdvance) await s.SetAutoAdvanceAsync(SettingsAutoAdvanceSwitch.IsOn);
         SettingsPasswordBox.Password = "";
     }
 

@@ -44,6 +44,19 @@ device and ping. Click a viewer for what you're allowed to do:
 you don't have. When the host drops out, the top co-host who is present takes over as **acting host**; the host takes back control on
 return. The theatre enforces all of this. The app just hides or disables what would be refused.
 
+## Playlist
+
+The **Playlist** tab in the side panel holds the screen's items: local files and links.
+
+- **Add files… / Add folder…** (with `playlist.add`): Kino reads each file's duration and sends only its **name and duration**.
+  Paths and contents never leave your PC. Folders are added A–Z in natural order (`EP 2` before `EP 10`).
+- **Add link…** (with `playlist.add_external`): a direct video URL. Everyone streams it straight from the source.
+- **Your copies:** Kino matches each local item to a file you've opened or offered, by **duration first, then name**.
+  **Match my files…** offers a whole folder, and an item's menu has **Choose my file…** to pick one by hand.
+  Each item shows ✓ (match), ✓ *different name*, ⚠ *length differs* or *Pick your file*. A mismatch only warns; it never blocks.
+- When an item ends, the theatre moves everyone to the next one (or stops, if *When an item ends* is set to *Stop* in
+  Invite & settings). If your copy is shorter, you wait at its end. ⏮ / ⏭ skip with `playback.skip`.
+
 ## Invites, settings and reconnecting
 
 - **Invite & settings…** (in the viewers panel) shows the screen code and its invite link, for example

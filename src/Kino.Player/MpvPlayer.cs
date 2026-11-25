@@ -20,6 +20,8 @@ public sealed class MpvPlayer : IDisposable, IPlayback
 
     public double Duration { get; private set; } = double.NaN;
 
+    double? IPlayback.MediaDuration => double.IsNaN(Duration) || Duration <= 0 ? null : Duration;
+
     // ---- IPlayback ------------------------------------------------------------------------
     double? IPlayback.Position => GetPosition() is var p && double.IsFinite(p) ? p : null;
     bool IPlayback.IsPaused => _paused;
@@ -68,7 +70,11 @@ public sealed class MpvPlayer : IDisposable, IPlayback
 
     // ---- Commands -------------------------------------------------------------------------
 
-    public void Load(string pathOrUrl) => Command("loadfile", pathOrUrl, "replace");
+    public void Load(string pathOrUrl)
+    {
+        Duration = double.NaN; // unknown until the new file reports it
+        Command("loadfile", pathOrUrl, "replace");
+    }
 
     public void SetPaused(bool paused)
     {
