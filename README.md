@@ -4,7 +4,8 @@ Native Windows client for [Kino Enhanced](https://github.com/Sriharan-S/kino-enh
 
 - **Stack:** C# / .NET 10 + WinUI 3 (Windows App SDK, unpackaged, self-contained), playback via **libmpv**
 - **Spec:** [Wiki → docs](https://github.com/Sriharan-S/kino-enhanced/wiki/docs) · [Protocol](https://github.com/Sriharan-S/kino-enhanced/tree/main/protocol)
-- **TODO / progress:** tracked in the [main README checklist](https://github.com/Sriharan-S/kino-enhanced#todo)
+- **Roadmap / progress:** [`ROADMAP.md`](ROADMAP.md) (the Windows checklist, with what's done, what's partial and
+  what to fix first), which follows the [master roadmap](https://github.com/Sriharan-S/kino-enhanced/blob/main/ROADMAP.md)
 
 ## Prerequisites
 
