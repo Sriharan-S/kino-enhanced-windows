@@ -28,6 +28,7 @@ public static class TheatreDirectory
     public static readonly DirectoryFile Bundled = new(1,
     [
         new("aurora", "Aurora", "https://kino-aurora.srie.workers.dev"),
+        new("nova", "Nova", "https://kino-nova.sri-me.workers.dev"),
     ]);
 
     public static string DefaultCachePath => Path.Combine(
