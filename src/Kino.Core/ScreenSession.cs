@@ -35,10 +35,15 @@ public sealed class ScreenSession : IAsyncDisposable
     public ScreenSession(IPlayback player, SyncSettings? settings = null)
     {
         _settings = settings ?? SyncSettings.Default;
-        Engine = new SyncEngine(player, () => _clock.TheatreNowMs, () => _clock.LocalNowMs, _settings);
+        Engine = new SyncEngine(player, () => _clock.TheatreNowMs, () => _clock.LocalNowMs, _settings) { Enabled = false };
         Engine.ReanchorRequested += (pos, at) => _ = _conn.SendAsync("reanchor", new { position = pos, at });
         _conn.Message += OnMessage;
-        _conn.Closed += reason => Closed?.Invoke(reason);
+        _conn.Closed += reason =>
+        {
+            // A rejection closes with code 4001 and the error code as the reason; don't wait 10 s for a welcome.
+            _welcome?.TrySetException(new TheatreException(0, $"connection closed ({reason})", reason));
+            Closed?.Invoke(reason);
+        };
     }
 
     /// <summary>Creates a screen on the theatre and joins it as host.</summary>
@@ -47,7 +52,7 @@ public sealed class ScreenSession : IAsyncDisposable
     {
         var created = await api.CreateScreenAsync(req, ct);
         var session = new ScreenSession(player);
-        await session.JoinAsync(api, identity, created.Code, created.ScreenId, displayName, password: null, claim: created.Claim, ct);
+        await session.JoinOrDisposeAsync(api, identity, created.Code, created.ScreenId, displayName, password: null, claim: created.Claim, ct);
         return (session, created);
     }
 
@@ -64,8 +69,22 @@ public sealed class ScreenSession : IAsyncDisposable
         TheatreApi api, DeviceIdentity identity, IPlayback player, ResolveResponse resolved, string displayName, string? password = null, CancellationToken ct = default)
     {
         var session = new ScreenSession(player);
-        await session.JoinAsync(api, identity, resolved.Code, resolved.ScreenId, displayName, password, claim: null, ct);
+        await session.JoinOrDisposeAsync(api, identity, resolved.Code, resolved.ScreenId, displayName, password, claim: null, ct);
         return session;
+    }
+
+    private async Task JoinOrDisposeAsync(TheatreApi api, DeviceIdentity identity, string code, string screenId, string name,
+                                          string? password, string? claim, CancellationToken ct)
+    {
+        try
+        {
+            await JoinAsync(api, identity, code, screenId, name, password, claim, ct);
+        }
+        catch
+        {
+            await DisposeAsync();
+            throw;
+        }
     }
 
     private async Task JoinAsync(TheatreApi api, DeviceIdentity identity, string code, string screenId, string name,
@@ -90,9 +109,10 @@ public sealed class ScreenSession : IAsyncDisposable
         CurrentItem = welcome.Item;
         Viewers = welcome.Viewers;
 
-        // Clock-sync burst before the engine starts acting on anchors.
+        // Clock-sync burst before the engine starts acting on anchors (it stays disabled until then).
         Engine.ApplyAnchor(welcome.Anchor);
         await PingBurstAsync(_settings.BurstSamples);
+        Engine.Enabled = true;
         _loop = Task.Run(RunLoop);
     }
 
@@ -121,7 +141,7 @@ public sealed class ScreenSession : IAsyncDisposable
                 _clock.AddSample(p.Data.T0, p.Data.Ts, _clock.LocalNowMs);
                 break;
             case ServerMessage.AnchorMsg a:
-                // Safe before clock sync completes: the engine only acts on anchors once the loop runs.
+                // Safe before clock sync completes: the engine stays disabled until then.
                 Engine.ApplyAnchor(a.Data);
                 break;
             case ServerMessage.ItemMsg i:
@@ -133,7 +153,7 @@ public sealed class ScreenSession : IAsyncDisposable
                 ViewersChanged?.Invoke(v.Data);
                 break;
             case ServerMessage.ErrorMsg e:
-                _welcome?.TrySetException(new TheatreException(0, $"{e.Data.Code}: {e.Data.Message}"));
+                _welcome?.TrySetException(new TheatreException(0, e.Data.Message, e.Data.Code));
                 Error?.Invoke(e.Data);
                 break;
         }

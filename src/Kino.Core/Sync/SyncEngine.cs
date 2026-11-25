@@ -57,6 +57,12 @@ public sealed class SyncEngine
         SeekLatency = _s.InitialSeekLatency;
     }
 
+    /// <summary>
+    /// When false, anchors are stored but not acted on. A session keeps this off until its clock is synced, so an
+    /// anchor is never applied against an unsynced clock.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
     /// <summary>The host's real playback defines the truth: it re-anchors instead of correcting itself.</summary>
     public bool IsHost { get; set; }
 
@@ -93,13 +99,13 @@ public sealed class SyncEngine
             _checkJump = true;
             _lastHardSeek = double.NegativeInfinity; // the throttle stops seek loops, not deliberate host seeks
             Disrupt(_localNowMs());
-            Status = Step(0);
+            if (Enabled) Status = Step(0);
         }
     }
 
     public void Tick(double dtSeconds)
     {
-        lock (_gate) Status = Step(dtSeconds);
+        lock (_gate) if (Enabled) Status = Step(dtSeconds);
     }
 
     private SyncStatus Step(double dt)

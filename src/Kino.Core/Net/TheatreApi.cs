@@ -46,7 +46,10 @@ public sealed class TheatreApi(Uri baseUrl, HttpClient? http = null)
     }
 }
 
-public sealed class TheatreException(int status, string body) : Exception($"Theatre returned {status}: {body}")
+/// <summary>An HTTP error (<see cref="Status"/> set) or a WebSocket rejection (<see cref="Code"/> set, e.g. "wrong_password").</summary>
+public sealed class TheatreException(int status, string message, string? code = null)
+    : Exception(code is null ? $"Theatre returned {status}: {message}" : message)
 {
     public int Status { get; } = status;
+    public string? Code { get; } = code;
 }
