@@ -5,8 +5,8 @@ tagged `v<version>`, and each `## <version>` section here becomes that release's
 
 ## Unreleased
 
-- **Web viewers:** invite links from [Kino for the web](https://kino-web.srie.workers.dev) (`https://…/#<theatre>/<code>`)
-  work in **Join a screen**. Web and Windows viewers can share a screen.
+- **Web viewers:** Kino recognises invite links from [Kino for the web](https://kino-web.srie.workers.dev)
+  (`https://…/#<theatre>/<code>`) when it is started with one. Web and Windows viewers can share a screen.
 
 ## 0.1.0 — 2026-11-25
 
