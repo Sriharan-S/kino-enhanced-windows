@@ -68,6 +68,15 @@ public static partial class LibMpv
         public int PlaylistInsertNumEntries;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct EventLogMessage
+    {
+        public IntPtr Prefix;
+        public IntPtr Level;
+        public IntPtr Text;
+        public int LogLevel;
+    }
+
     [LibraryImport(Dll, EntryPoint = "mpv_create")]
     public static partial IntPtr Create();
 
@@ -91,6 +100,16 @@ public static partial class LibMpv
 
     [LibraryImport(Dll, EntryPoint = "mpv_get_property", StringMarshalling = StringMarshalling.Utf8)]
     public static partial int GetProperty(IntPtr ctx, string name, Format format, out double data);
+
+    /// <summary>Returns a UTF-8 string that must be released with <see cref="Free"/>, or IntPtr.Zero.</summary>
+    [LibraryImport(Dll, EntryPoint = "mpv_get_property_string", StringMarshalling = StringMarshalling.Utf8)]
+    public static partial IntPtr GetPropertyString(IntPtr ctx, string name);
+
+    [LibraryImport(Dll, EntryPoint = "mpv_free")]
+    public static partial void Free(IntPtr data);
+
+    [LibraryImport(Dll, EntryPoint = "mpv_request_log_messages", StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int RequestLogMessages(IntPtr ctx, string minLevel);
 
     [LibraryImport(Dll, EntryPoint = "mpv_command")]
     public static partial int Command(IntPtr ctx, IntPtr[] args);

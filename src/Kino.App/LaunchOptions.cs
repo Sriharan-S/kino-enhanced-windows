@@ -23,7 +23,8 @@ public sealed record LaunchOptions
     public double Perturb { get; init; }
     public double PerturbAfter { get; init; } = 20;
     public int[]? Window { get; init; }
-    public double Volume { get; init; } = 100;
+    /// <summary>Overrides the saved volume (tests use 0).</summary>
+    public double? Volume { get; init; }
 
     /// <summary>An invite link to join (kino://join/... or the web form), e.g. from clicking a link.</summary>
     public Kino.Core.InviteLink? Invite { get; init; }

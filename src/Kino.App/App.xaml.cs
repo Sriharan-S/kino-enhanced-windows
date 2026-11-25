@@ -10,6 +10,21 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += (_, e) => WriteCrashLog(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => WriteCrashLog(e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) => e.SetObserved(); // background work must never take the app down
+    }
+
+    /// <summary>Appends to %LOCALAPPDATA%\Kino\crash.log, so failures can be diagnosed.</summary>
+    internal static void WriteCrashLog(Exception? ex)
+    {
+        try
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kino");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "crash.log"), $"[{DateTimeOffset.Now:O}] {ex}\n\n");
+        }
+        catch (Exception) { /* nothing more we can do */ }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -25,7 +40,15 @@ public partial class App : Application
         }
 
         ProtocolRegistration.EnsureRegistered();
-        _window = new MainWindow(options);
+        try
+        {
+            _window = new MainWindow(options);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog(ex);
+            throw;
+        }
         _window.Activate();
 
         _instance = new SingleInstance(options.Profile);

@@ -51,11 +51,13 @@ public sealed partial class MainWindow : Window
         Title = options.Profile == "default" ? "Kino" : $"Kino — {options.Profile}";
 
         NameBox.Text = options.Name;
-        VolumeSlider.Value = options.Volume;
+        InitPlayerFeatures();
+        double volume = options.Volume ?? _prefs.Volume;
+        VolumeSlider.Value = volume;
 
         _videoHost = new VideoHost(_hwnd);
         _player = new MpvPlayer(_videoHost.Hwnd);
-        _player.SetVolume(options.Volume); // the slider fired before the player existed
+        _player.SetVolume(volume); // the slider fired before the player existed
 
         _player.PositionChanged += pos => _ui.TryEnqueue(() => OnPosition(pos));
         _player.DurationChanged += d => _ui.TryEnqueue(() => { _duration = d; SeekSlider.Maximum = Math.Max(1, d); });
@@ -69,7 +71,11 @@ public sealed partial class MainWindow : Window
 
         SeekSlider.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => _seekDragging = true), true);
 
-        VideoArea.SizeChanged += (_, _) => LayoutOverlays();
+        VideoArea.SizeChanged += (_, _) =>
+        {
+            LayoutOverlays();
+            if (_viewKey is not null) ApplyView(); // fit width/height depend on the window shape
+        };
         Root.Loaded += async (_, _) =>
         {
             LayoutOverlays();
@@ -82,6 +88,8 @@ public sealed partial class MainWindow : Window
         {
             _lobbyTimer?.Stop();
             if (_session is not null) await _session.DisposeAsync();
+            RememberPosition();
+            _prefs.Save(_prefsFile);
             _syncLog?.Dispose();
             _player.Dispose();
             _videoHost.Dispose();
@@ -163,6 +171,7 @@ public sealed partial class MainWindow : Window
         });
 
         AttachPlaylist(s);
+        s.Engine.PersonalOffsetMs = CurrentView.SyncOffsetMs;
         AttachChat(s);
         OnItemChanged(s.CurrentItem);
 
@@ -378,7 +387,6 @@ public sealed partial class MainWindow : Window
         else if (_session.Can(Permissions.PlaybackSeek)) await _session.SeekAsync(to);
     }
 
-    private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e) => _player?.SetVolume(e.NewValue);
 
     private void OnOverlayToggle(object sender, RoutedEventArgs e) =>
         OverlayPopup.IsOpen = OverlayToggle.IsChecked == true && _page == Page.Video;

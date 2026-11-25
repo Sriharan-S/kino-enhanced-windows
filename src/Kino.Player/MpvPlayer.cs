@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Globalization;
+using Kino.Core.Media;
 using Kino.Core.Sync;
 
 namespace Kino.Player;
@@ -56,6 +58,7 @@ public sealed class MpvPlayer : IDisposable, IPlayback
         Set("hr-seek", "yes");                 // exact seeks
 
         Check(LibMpv.Initialize(_ctx), "mpv_initialize");
+        LibMpv.RequestLogMessages(_ctx, "warn"); // to name codecs we can't decode (spec §15.5)
 
         LibMpv.ObserveProperty(_ctx, (ulong)Prop.TimePos, "time-pos", LibMpv.Format.Double);
         LibMpv.ObserveProperty(_ctx, (ulong)Prop.Duration, "duration", LibMpv.Format.Double);
@@ -90,6 +93,71 @@ public sealed class MpvPlayer : IDisposable, IPlayback
     public void SetSpeed(double speed) => LibMpv.SetProperty(_ctx, "speed", LibMpv.Format.Double, ref speed);
 
     public void SetVolume(double percent) => LibMpv.SetProperty(_ctx, "volume", LibMpv.Format.Double, ref percent);
+
+    public void SetMuted(bool muted)
+    {
+        int flag = muted ? 1 : 0;
+        LibMpv.SetProperty(_ctx, "mute", LibMpv.Format.Flag, ref flag);
+    }
+
+    // ---- Picture (local only, spec §16) -----------------------------------------------------
+
+    /// <summary>Applies zoom, pan, aspect and fit. <paramref name="windowAspect"/> is the video area's width / height.</summary>
+    public void ApplyView(ViewSettings v, double windowAspect)
+    {
+        v = v.Clamped();
+        SetString("video-zoom", ViewMath.MpvZoom(v.Zoom).ToString("0.####", CultureInfo.InvariantCulture));
+        SetString("video-pan-x", v.PanX.ToString("0.####", CultureInfo.InvariantCulture));
+        SetString("video-pan-y", v.PanY.ToString("0.####", CultureInfo.InvariantCulture));
+        SetString("video-aspect-override", ViewMath.MpvAspect(v.Aspect));
+        double videoAspect = AspectOf(v.Aspect) ?? VideoAspect ?? 16.0 / 9;
+        var (keep, panscan) = ViewMath.FitProperties(v.Fit, videoAspect, windowAspect > 0 ? windowAspect : 16.0 / 9);
+        SetString("keepaspect", keep ? "yes" : "no");
+        SetString("panscan", panscan.ToString("0.##", CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>The picture's display aspect ratio, once a video is loaded.</summary>
+    public double? VideoAspect =>
+        LibMpv.GetProperty(_ctx, "video-params/aspect", LibMpv.Format.Double, out var a) >= 0 && a > 0 ? a : null;
+
+    private static double? AspectOf(string ratio)
+    {
+        var parts = ratio.Split(":");
+        return parts.Length == 2 && double.TryParse(parts[0], CultureInfo.InvariantCulture, out var w) && double.TryParse(parts[1], CultureInfo.InvariantCulture, out var h) && h > 0 ? w / h : null;
+    }
+
+    // ---- Tracks ------------------------------------------------------------------------------
+
+    public sealed record Track(int Id, string Type, string Label, bool Selected);
+
+    /// <summary>The loaded file's tracks of one type ("audio", "video", "sub").</summary>
+    public IReadOnlyList<Track> Tracks(string type)
+    {
+        var list = new List<Track>();
+        if (LibMpv.GetProperty(_ctx, "track-list/count", LibMpv.Format.Double, out double count) < 0) return list;
+        for (int i = 0; i < (int)count; i++)
+        {
+            if (GetString($"track-list/{i}/type") != type) continue;
+            if (!int.TryParse(GetString($"track-list/{i}/id"), out int id)) continue;
+            string? title = GetString($"track-list/{i}/title"), lang = GetString($"track-list/{i}/lang"), codec = GetString($"track-list/{i}/codec");
+            string channels = GetString($"track-list/{i}/demux-channel-count") is { } ch ? $"{ch} ch" : "";
+            string label = string.Join(" · ", new[] { title, lang?.ToUpperInvariant(), codec, channels }.Where(x => !string.IsNullOrEmpty(x)));
+            list.Add(new Track(id, type, label.Length > 0 ? label : $"Track {id}", GetString($"track-list/{i}/selected") == "yes"));
+        }
+        return list;
+    }
+
+    public void SelectAudio(int id) => SetString("aid", id.ToString(CultureInfo.InvariantCulture));
+
+    public string? GetString(string name)
+    {
+        IntPtr p = LibMpv.GetPropertyString(_ctx, name);
+        if (p == IntPtr.Zero) return null;
+        try { return Marshal.PtrToStringUTF8(p); }
+        finally { LibMpv.Free(p); }
+    }
+
+    private void SetString(string name, string value) => LibMpv.SetPropertyString(_ctx, name, value);
 
     public double GetPosition() =>
         LibMpv.GetProperty(_ctx, "time-pos", LibMpv.Format.Double, out var v) >= 0 ? v : double.NaN;
@@ -135,7 +203,11 @@ public sealed class MpvPlayer : IDisposable, IPlayback
                     break;
                 case LibMpv.EventId.EndFile:
                     var ef = Marshal.PtrToStructure<LibMpv.EventEndFile>(ev.Data);
-                    if (ef.Error < 0) Error?.Invoke($"Playback error: {LibMpv.Error(ef.Error)}");
+                    if (ef.Error < 0) Error?.Invoke($"Can't play this file: {LibMpv.Error(ef.Error)}");
+                    break;
+                case LibMpv.EventId.LogMessage:
+                    var log = Marshal.PtrToStructure<LibMpv.EventLogMessage>(ev.Data);
+                    if (CodecProblem(Marshal.PtrToStringUTF8(log.Text)) is { } problem) Error?.Invoke(problem);
                     break;
                 case LibMpv.EventId.PropertyChange:
                     OnPropertyChange((Prop)ev.ReplyUserdata, Marshal.PtrToStructure<LibMpv.EventProperty>(ev.Data));
@@ -157,6 +229,16 @@ public sealed class MpvPlayer : IDisposable, IPlayback
             case Prop.PausedForCache: _buffering = Marshal.ReadInt32(p.Data) != 0; BufferingChanged?.Invoke(_buffering); break;
             case Prop.EofReached: EofChanged?.Invoke(Marshal.ReadInt32(p.Data) != 0); break;
         }
+    }
+
+    /// <summary>Turns libmpv decoder warnings into a message that names the codec (spec §15.5), or null.</summary>
+    public static string? CodecProblem(string? log)
+    {
+        if (log is null) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(log, @"Failed to initialize a decoder for codec '([^']+)'");
+        if (m.Success) return $"This file uses the {m.Groups[1].Value} codec, which Kino can't decode on this PC.";
+        if (log.Contains("Could not open codec", StringComparison.OrdinalIgnoreCase)) return "A codec in this file couldn't be opened.";
+        return null;
     }
 
     private static double ReadDouble(IntPtr p) => BitConverter.Int64BitsToDouble(Marshal.ReadInt64(p));

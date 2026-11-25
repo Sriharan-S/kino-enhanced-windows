@@ -14,7 +14,7 @@
         </Grid.RowDefinitions>
 
         <!-- Top bar -->
-        <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
+        <Grid x:Name="TopBar" Grid.Row="0" Padding="12,8" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="160" />
@@ -448,7 +448,7 @@
             </Border>
         </Popup>
 
-        <Grid Grid.Row="2" Padding="12,8" ColumnSpacing="10">
+        <Grid x:Name="TransportBar" Grid.Row="2" Padding="12,8" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -472,12 +472,65 @@
             <TextBlock x:Name="TimeText" Grid.Column="3" VerticalAlignment="Center" Text="00:00 / 00:00"
                        FontFamily="Consolas" />
             <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="Vol" VerticalAlignment="Center" />
-                <Slider x:Name="VolumeSlider" Width="90" Minimum="0" Maximum="200" Value="100"
-                        IsThumbToolTipEnabled="False" ValueChanged="OnVolumeChanged" />
+                <ToggleButton x:Name="MuteToggle" Content="&#x1F50A;" Click="OnMuteToggle" Padding="8,4"
+                              ToolTipService.ToolTip="Mute (M)" />
+                <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="200" Value="100" VerticalAlignment="Center"
+                        IsThumbToolTipEnabled="True" ValueChanged="OnVolumeChanged">
+                    <FlyoutBase.AttachedFlyout>
+                        <Flyout x:Name="BoostFlyout" ShouldConstrainToRootBounds="False">
+                            <StackPanel Spacing="10" MaxWidth="300">
+                                <TextBlock Text="Boost volume above 100%?" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="Going above 100% can distort the sound and, at high levels, damage your hearing or speakers. Turn your system volume down first." />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Allow up to 200%" Click="OnBoostAccept" Style="{ThemeResource AccentButtonStyle}" />
+                                    <Button Content="Not now" Click="OnBoostDecline" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Flyout>
+                    </FlyoutBase.AttachedFlyout>
+                </Slider>
             </StackPanel>
-            <ToggleButton x:Name="OverlayToggle" Grid.Column="5" Content="Overlay" IsChecked="True"
-                          Click="OnOverlayToggle" />
+            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6">
+                <Button x:Name="PictureButton" Content="Picture &amp; sound" ToolTipService.ToolTip="Zoom, aspect, fit, audio track, sync offset">
+                    <Button.Flyout>
+                        <Flyout x:Name="PictureFlyout" ShouldConstrainToRootBounds="False" Opening="OnPictureFlyoutOpening">
+                            <StackPanel Spacing="8" Width="300">
+                                <TextBlock Text="Only on this PC" FontSize="12" Opacity="0.7" />
+                                <Slider x:Name="ZoomSlider" Header="Zoom" Minimum="50" Maximum="400" StepFrequency="5" Value="100"
+                                        ValueChanged="OnViewControlChanged" />
+                                <Grid x:Name="PanRow" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="PanXSlider" Header="Pan ↔" Minimum="-100" Maximum="100" Value="0"
+                                            ValueChanged="OnViewControlChanged" />
+                                    <Slider x:Name="PanYSlider" Grid.Column="1" Header="Pan ↕" Minimum="-100" Maximum="100" Value="0"
+                                            ValueChanged="OnViewControlChanged" />
+                                </Grid>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="AspectBox" Header="Aspect" HorizontalAlignment="Stretch" SelectionChanged="OnViewControlChanged" />
+                                    <ComboBox x:Name="FitBox" Grid.Column="1" Header="Fit" HorizontalAlignment="Stretch" SelectionChanged="OnViewControlChanged" />
+                                </Grid>
+                                <ComboBox x:Name="AudioTrackBox" Header="Audio track" HorizontalAlignment="Stretch" SelectionChanged="OnAudioTrackChanged" />
+                                <NumberBox x:Name="SyncOffsetBox" Header="Personal sync offset (ms)" Minimum="-2000" Maximum="2000"
+                                           SmallChange="50" LargeChange="250" SpinButtonPlacementMode="Inline" Value="0"
+                                           ValueChanged="OnSyncOffsetChanged"
+                                           ToolTipService.ToolTip="Positive plays later, e.g. +200 for Bluetooth headphones" />
+                                <CheckBox x:Name="PerFileBox" Content="Remember for this file only" Click="OnPerFileToggle" />
+                                <Button Content="Reset to defaults" Click="OnResetViewClick" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <Button x:Name="FullscreenButton" Content="&#x26F6;" Click="OnFullscreenClick" ToolTipService.ToolTip="Fullscreen (F)" />
+                <ToggleButton x:Name="OverlayToggle" Content="Overlay" IsChecked="True" Click="OnOverlayToggle" />
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

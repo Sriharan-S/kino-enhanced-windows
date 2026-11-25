@@ -57,6 +57,19 @@ The **Playlist** tab in the side panel holds the screen's items: local files and
 - When an item ends, the theatre moves everyone to the next one (or stops, if *When an item ends* is set to *Stop* in
   Invite & settings). If your copy is shorter, you wait at its end. ⏮ / ⏭ skip with `playback.skip`.
 
+## Player
+
+- **Picture & sound** (transport bar): zoom 50–400% with pan, aspect override, fit (fit, fit width, fit height, stretch,
+  fill), audio track, and a **personal sync offset** (±2000 ms, e.g. +200 for Bluetooth headphones). These settings stay
+  on your PC: global defaults, or **Remember for this file only**.
+- **Volume** goes up to 200% after a one-time warning. 🔊 mutes.
+- **Fullscreen:** ⛶, F or F11; Esc exits.
+- **Shortcuts:** Space/K play-pause · ←/→ 5 s · J/L 10 s · ↑/↓ volume · M mute · N/P next/previous · Home restart.
+  In a screen, seeking and play/pause still need the matching permission.
+- **Resume:** each file's position is saved locally every few seconds. Opening it again outside a screen resumes it.
+- If a file can't be played, Kino says why, and names the codec if a decoder is missing.
+- Crashes are written to `%LOCALAPPDATA%\Kino\crash.log`.
+
 ## Chat
 
 The **Chat** tab has text chat (500 characters), GIFs and reactions. Reactions float briefly over the video. System lines

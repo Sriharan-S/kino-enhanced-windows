@@ -108,6 +108,7 @@ public sealed partial class MainWindow
             _loadedPath = _loadingPath;
             _loadingPath = null;
         }
+        if (_loadedPath is { } path) OnFileReady(path);
         if (_session is { } s && _loadingItemId is { } id)
         {
             _loadingItemId = null;
