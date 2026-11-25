@@ -33,7 +33,7 @@ public sealed partial class MainWindow
 
     // ---- Lobby visibility -------------------------------------------------------------------
 
-    private enum Page { Video, Lobby, Roles }
+    private enum Page { Video, Lobby, Roles, Screen }
 
     private Page _page = Page.Video;
 
@@ -47,6 +47,7 @@ public sealed partial class MainWindow
         _lobbyVisible = show;
         LobbyPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         RolesPanel.Visibility = page == Page.Roles ? Visibility.Visible : Visibility.Collapsed;
+        ScreenPanel.Visibility = page == Page.Screen ? Visibility.Visible : Visibility.Collapsed;
         _videoHost.Visible = page == Page.Video;
         OverlayPopup.IsOpen = page == Page.Video && OverlayToggle.IsChecked == true;
         LobbyButton.Content = page == Page.Video ? "Lobby" : "Back to video";

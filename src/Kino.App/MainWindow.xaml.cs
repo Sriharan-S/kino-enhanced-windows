@@ -74,7 +74,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) =>
         {
             LayoutOverlays();
-            bool direct = _opt.Media is not null || _opt.Create is not null || _opt.Join is not null;
+            bool direct = _opt.Media is not null || _opt.Create is not null || _opt.Join is not null || _opt.Invite is not null;
             ShowLobby(!direct);
             await LoadTheatresAsync();
             await AutoStartAsync();
@@ -102,6 +102,7 @@ public sealed partial class MainWindow : Window
         if (_opt.Media is not null) OpenMedia(_opt.Media);
         if (_opt.Create is not null) await CreateScreenAsync(new CreateScreenRequest(_opt.Create, "public"));
         else if (_opt.Join is not null) await JoinByCodeAsync(_opt.Join.Trim());
+        else if (_opt.Invite is { } link) await JoinInviteAsync(link);
     }
 
     // ---- Session -------------------------------------------------------------------------
@@ -125,6 +126,19 @@ public sealed partial class MainWindow : Window
             OnPermissionsChanged();
         });
         s.RolesChanged += _ => _ui.TryEnqueue(() => { if (_session == s) OnPermissionsChanged(); });
+        s.ScreenChanged += _ => _ui.TryEnqueue(() =>
+        {
+            if (_session != s) return;
+            UpdateSessionText();
+            if (_page == Page.Screen) RenderScreenPage(resetFields: true);
+        });
+        s.Reconnecting += () => _ui.TryEnqueue(() =>
+        {
+            if (_session != s) return;
+            SessionText.Text = "Reconnecting… (playback continues)";
+            OverlayTitle.Text = "Reconnecting…";
+        });
+        s.Reconnected += () => _ui.TryEnqueue(() => { if (_session == s) UpdateSessionText(); });
         s.CoHostsChanged += _ => _ui.TryEnqueue(() => { if (_session == s) RenderViewers(); });
         s.ItemChanged += item => _ui.TryEnqueue(() => { if (_session == s) OnItemChanged(item); });
         s.Error += err => _ui.TryEnqueue(() =>
@@ -159,6 +173,7 @@ public sealed partial class MainWindow : Window
             OnViewersToggle(this, new RoutedEventArgs());
         }
         if (_opt.Panel == "roles") OpenRolesPage(null);
+        if (_opt.Panel == "screen") OnScreenClick(this, new RoutedEventArgs());
     }
 
     /// <summary>Message from kick / ban / close, shown in the lobby once the connection drops.</summary>
@@ -172,6 +187,7 @@ public sealed partial class MainWindow : Window
         SeekSlider.IsEnabled = s.Can(Permissions.PlaybackSeek);
         RenderViewers();
         if (_page == Page.Roles) RefreshRolesPage();
+        if (_page == Page.Screen) RenderScreenPage(resetFields: false);
     }
 
     private async Task LeaveSessionAsync()
@@ -185,7 +201,7 @@ public sealed partial class MainWindow : Window
         LeaveButton.Visibility = ViewersToggle.Visibility = Visibility.Collapsed;
         ViewersToggle.IsChecked = false;
         SideColumn.Width = new GridLength(0);
-        if (_page == Page.Roles) ShowPage(Page.Video);
+        if (_page is Page.Roles or Page.Screen) ShowPage(Page.Video);
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
         OverlayTitle.Text = "Kino";
         OverlayText.Text = "Open a file or join a screen";
@@ -206,7 +222,7 @@ public sealed partial class MainWindow : Window
             : "Viewer";
         int count = _session.Viewers.Count;
         string theatre = _sessionTheatre is null ? "" : $" · {_sessionTheatre.Name}";
-        SessionText.Text = $"{_session.Joined!.Screen.Name}{theatre} · code {_session.Code} · {role} · {count} viewer{(count == 1 ? "" : "s")}";
+        SessionText.Text = $"{_session.Screen?.Name}{theatre} · code {_session.Code} · {role} · {count} viewer{(count == 1 ? "" : "s")}";
     }
 
     private void OnItemChanged(Item? item)

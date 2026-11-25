@@ -45,6 +45,9 @@ public sealed record ViewerInfo(string Id, string Name, string? Device, bool IsH
     /// <summary>Effective permissions, computed by the theatre.</summary>
     public string[] Permissions { get; init; } = [];
 
+    /// <summary>False while their connection has dropped and they are in the reconnect grace period.</summary>
+    public bool Connected { get; init; } = true;
+
     public bool Can(string permission) => Permissions.Contains(permission);
 
     /// <summary>Defines the timeline: the host, or the acting host while the host is away.</summary>
@@ -53,7 +56,11 @@ public sealed record ViewerInfo(string Id, string Name, string? Device, bool IsH
 
 public sealed record Role(string Id, string Name, string? Colour, int Position, string[] Permissions, bool Builtin);
 
-public sealed record ScreenInfo(string Code, string Name, string Visibility, int MaxViewers, bool ShowDevices);
+public sealed record ScreenInfo(string Code, string Name, string Visibility, int MaxViewers, bool ShowDevices)
+{
+    public bool Hidden { get; init; }
+    public bool IsPrivate => Visibility == "private";
+}
 
 public sealed record Welcome(ViewerInfo Self, ScreenInfo Screen, ViewerInfo[] Viewers, Item? Item, Anchor Anchor, double ServerTime)
 {
@@ -94,6 +101,7 @@ public abstract record ServerMessage
     public sealed record ViewersMsg(ViewerInfo[] Data) : ServerMessage;
     public sealed record RolesMsg(Role[] Data) : ServerMessage;
     public sealed record CoHostsMsg(CoHostInfo[] Data) : ServerMessage;
+    public sealed record ScreenMsg(ScreenInfo Data) : ServerMessage;
     public sealed record ErrorMsg(ServerError Data) : ServerMessage;
     public sealed record Unknown(string Type) : ServerMessage;
 
@@ -114,6 +122,7 @@ public abstract record ServerMessage
             "viewers" => new ViewersMsg(data.Deserialize<ViewerInfo[]>(o)!),
             "roles" => new RolesMsg(data.Deserialize<Role[]>(o)!),
             "cohosts" => new CoHostsMsg(data.Deserialize<CoHostInfo[]>(o)!),
+            "screen" => new ScreenMsg(data.Deserialize<ScreenInfo>(o)!),
             "error" => new ErrorMsg(data.Deserialize<ServerError>(o)!),
             _ => new Unknown(type),
         };

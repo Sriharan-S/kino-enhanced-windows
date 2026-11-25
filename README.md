@@ -44,6 +44,17 @@ device and ping. Click a viewer for what you're allowed to do:
 you don't have. When the host drops out, the top co-host who is present takes over as **acting host**; the host takes back control on
 return. The theatre enforces all of this. The app just hides or disables what would be refused.
 
+## Invites, settings and reconnecting
+
+- **Invite & settings…** (in the viewers panel) shows the screen code and its invite link, for example
+  `https://kino-directory.srie.workers.dev/join#aurora/7K3QXM`. The web page opens the app through `kino://join/aurora/7K3QXM`.
+  With `screen.invite` you can make a **new code**; the old code and links stop working. With `screen.settings` you can change
+  the name, visibility, password, hide-from-lobby, max viewers and whether devices are shown.
+- The app registers the `kino://` link scheme for the current user on startup (`HKCU\Software\Classes\kino`, no admin rights
+  needed). Kino runs **one window per profile**. Opening a link while it's running hands the link to that window.
+- If the connection drops, playback carries on from the last sync point and the app reconnects by itself for up to 60 s.
+  Others see you as *reconnecting…* and your seat is kept. **Leave screen** frees the seat at once.
+
 Opt-in live test against a real theatre: `$env:KINO_LIVE_THEATRE="https://kino-aurora.srie.workers.dev"; dotnet test tests\Kino.Core.Tests`.
 
 Visual Studio is optional. Everything builds with the `dotnet` CLI.

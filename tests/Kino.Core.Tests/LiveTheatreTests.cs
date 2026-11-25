@@ -74,6 +74,45 @@ public class LiveTheatreTests
         await back.CloseScreenAsync();
     }
 
+    [Fact]
+    public async Task Network_drop_reconnects_silently_and_kick_does_not()
+    {
+        if (Url is null) return;
+        var api = new TheatreApi(new Uri(Url));
+        var (host, created) = await ScreenSession.CreateAsync(api, DeviceIdentity.LoadOrCreate("test-live-host"), new SimPlayer(),
+            new CreateScreenRequest("Reconnect test", "private", "pw123456"), "Host");
+        await using var _ = host;
+        var resolved = (await api.ResolveAsync(created.Code))!;
+        await using var viewer = await ScreenSession.JoinResolvedAsync(api, DeviceIdentity.LoadOrCreate("test-live-viewer"), new SimPlayer(), resolved, "Viewer", "pw123456");
+        string id = viewer.Self!.Id;
+
+        int reconnecting = 0, reconnected = 0;
+        string? closed = null;
+        viewer.Reconnecting += () => reconnecting++;
+        viewer.Reconnected += () => reconnected++;
+        viewer.Closed += r => closed = r;
+
+        viewer.SimulateNetworkDrop();
+        await WaitFor(host, () => reconnected == 1); // no password needed: the theatre remembers this viewer
+        Assert.Equal(1, reconnecting);
+        Assert.Null(closed);
+        await WaitFor(host, () => host.Viewers.Any(v => v.Id == id && v.Connected));
+
+        // Settings and code changes reach everyone.
+        await host.UpdateSettingsAsync(name: "Renamed", maxViewers: 6);
+        await WaitFor(viewer, () => viewer.Screen?.Name == "Renamed" && viewer.Screen.MaxViewers == 6);
+        string oldCode = viewer.Code;
+        await host.RegenerateCodeAsync();
+        await WaitFor(viewer, () => viewer.Code != oldCode);
+        Assert.Null(await api.ResolveAsync(oldCode));
+
+        await host.KickAsync(id);
+        await WaitFor(host, () => closed is not null);
+        Assert.Equal("kicked", closed);
+        Assert.Equal(1, reconnecting); // a kick is final: no reconnect attempt
+        await host.CloseScreenAsync();
+    }
+
     private static async Task WaitFor(ScreenSession s, Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

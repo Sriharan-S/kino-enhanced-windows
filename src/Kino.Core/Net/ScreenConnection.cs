@@ -5,7 +5,14 @@ using Kino.Core.Protocol;
 
 namespace Kino.Core.Net;
 
-/// <summary>One WebSocket to a screen. Raises decoded messages on a background thread.</summary>
+/// <summary>How a connection ended. <see cref="Status"/> is the WebSocket close code, if the theatre sent one.</summary>
+public sealed record ConnectionClosed(int? Status, string Reason)
+{
+    /// <summary>4001 = rejected (reason is the error code), 4000 = replaced by a newer connection. Don't reconnect.</summary>
+    public bool IsFinal => Status is 4000 or 4001;
+}
+
+/// <summary>One WebSocket to a screen. Raises decoded messages on a background thread. Not reusable.</summary>
 public sealed class ScreenConnection : IAsyncDisposable
 {
     private readonly ClientWebSocket _ws = new();
@@ -14,14 +21,23 @@ public sealed class ScreenConnection : IAsyncDisposable
     private Task? _receiveLoop;
 
     public event Action<ServerMessage>? Message;
-    public event Action<string>? Closed;
+    public event Action<ConnectionClosed>? Closed;
 
     public bool IsOpen => _ws.State == WebSocketState.Open;
 
+    /// <summary>Throws <see cref="TheatreException"/> with the HTTP status if the theatre refused the upgrade (e.g. 404).</summary>
     public async Task ConnectAsync(Uri url, CancellationToken ct = default)
     {
         _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-        await _ws.ConnectAsync(url, ct);
+        _ws.Options.CollectHttpResponseDetails = true;
+        try
+        {
+            await _ws.ConnectAsync(url, ct);
+        }
+        catch (WebSocketException e) when (_ws.HttpStatusCode != 0)
+        {
+            throw new TheatreException((int)_ws.HttpStatusCode, e.Message);
+        }
         _receiveLoop = Task.Run(ReceiveLoop);
     }
 
@@ -47,6 +63,7 @@ public sealed class ScreenConnection : IAsyncDisposable
         var buffer = new byte[64 * 1024];
         var message = new MemoryStream();
         string reason = "closed";
+        int? status = null;
         try
         {
             while (!_cts.IsCancellationRequested && _ws.State == WebSocketState.Open)
@@ -55,6 +72,7 @@ public sealed class ScreenConnection : IAsyncDisposable
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     reason = _ws.CloseStatusDescription ?? "closed";
+                    status = _ws.CloseStatus is { } cs ? (int)cs : null;
                     break;
                 }
                 message.Write(buffer, 0, result.Count);
@@ -71,8 +89,11 @@ public sealed class ScreenConnection : IAsyncDisposable
         }
         catch (OperationCanceledException) { reason = "disconnected"; }
         catch (WebSocketException e) { reason = e.Message; }
-        Closed?.Invoke(reason);
+        Closed?.Invoke(new ConnectionClosed(status, reason));
     }
+
+    /// <summary>Test hook: drops the connection the way a network failure would (no close handshake).</summary>
+    internal void Abort() => _ws.Abort();
 
     public async ValueTask DisposeAsync()
     {

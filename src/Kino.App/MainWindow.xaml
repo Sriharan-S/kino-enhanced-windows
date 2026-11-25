@@ -54,7 +54,7 @@
                           ItemClick="OnViewerClick">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:ViewerRow">
-                            <StackPanel Padding="0,6">
+                            <StackPanel Padding="0,6" Opacity="{x:Bind RowOpacity}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Ellipse Width="8" Height="8" Fill="{x:Bind ColourBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -70,7 +70,8 @@
                 </ListView>
                 <TextBlock x:Name="AwayCoHostsText" Grid.Row="2" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                            Visibility="Collapsed" />
-                <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                <StackPanel Grid.Row="3" Orientation="Vertical" Spacing="8">
+                    <Button x:Name="ScreenButton" Content="Invite &amp; settings…" Click="OnScreenClick" />
                     <Button x:Name="RolesButton" Content="Roles…" Click="OnRolesClick" />
                     <Button x:Name="CloseScreenButton" Content="Close screen" Click="OnCloseScreenClick" />
                 </StackPanel>
@@ -256,6 +257,50 @@
                         <Button x:Name="DeleteRoleButton" Content="Delete role" Click="OnDeleteRoleClick" />
                     </StackPanel>
                     <TextBlock x:Name="RolesMessage" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap" Visibility="Collapsed" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Invite and screen settings. Hides the video window while shown, like the lobby. -->
+        <Grid x:Name="ScreenPanel" Grid.Row="1" Padding="24,12,24,16" Visibility="Collapsed"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="10" MaxWidth="560" HorizontalAlignment="Left">
+                    <TextBlock Text="Invite" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="InviteCodeText" FontSize="34" FontFamily="Consolas" IsTextSelectionEnabled="True" />
+                    <TextBlock x:Name="InviteLinkText" Opacity="0.7" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="CopyInviteButton" Content="Copy invite link" Click="OnCopyInviteClick"
+                                Style="{ThemeResource AccentButtonStyle}" />
+                        <Button Content="Copy code" Click="OnCopyCodeClick" />
+                        <Button x:Name="RegenerateCodeButton" Content="New code" Click="OnRegenerateCodeClick" />
+                    </StackPanel>
+                    <TextBlock x:Name="InviteHint" Opacity="0.7" TextWrapping="Wrap" />
+
+                    <TextBlock Text="Settings" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,16,0,0" />
+                    <TextBlock x:Name="SettingsHint" Opacity="0.7" TextWrapping="Wrap" />
+                    <TextBox x:Name="SettingsNameBox" Header="Screen name" MaxLength="64" />
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="120" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleSwitch x:Name="SettingsPrivateSwitch" Header="Visibility" OffContent="Public" OnContent="Private"
+                                      Toggled="OnSettingsPrivateToggled" />
+                        <NumberBox x:Name="SettingsMaxViewersBox" Grid.Column="1" Header="Max viewers" Minimum="2" Maximum="25"
+                                   SpinButtonPlacementMode="Compact" SmallChange="1" />
+                    </Grid>
+                    <PasswordBox x:Name="SettingsPasswordBox" Header="Password" />
+                    <CheckBox x:Name="SettingsHiddenBox" Content="Hide from lobby (join by code only)" />
+                    <ToggleSwitch x:Name="SettingsDevicesSwitch" Header="Viewers' devices" OnContent="Shown to everyone"
+                                  OffContent="Hidden" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="SaveSettingsButton" Content="Save settings" Click="OnSaveSettingsClick"
+                                Style="{ThemeResource AccentButtonStyle}" />
+                        <Button Content="Done" Click="OnScreenDoneClick" />
+                    </StackPanel>
+                    <TextBlock x:Name="SettingsMessage" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                TextWrapping="Wrap" Visibility="Collapsed" />
                 </StackPanel>
             </ScrollViewer>

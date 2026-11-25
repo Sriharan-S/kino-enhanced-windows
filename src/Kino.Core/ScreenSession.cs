@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Kino.Core.Identity;
 using Kino.Core.Net;
 using Kino.Core.Protocol;
@@ -6,22 +7,36 @@ using Kino.Core.Sync;
 namespace Kino.Core;
 
 /// <summary>
-/// A viewer's live session in one screen: connection, clock sync and the sync engine loop.
+/// A viewer's live session in one screen: connection (with automatic reconnect), clock sync and the sync engine loop.
 /// Events are raised on background threads.
 /// </summary>
 public sealed class ScreenSession : IAsyncDisposable
 {
-    private readonly ScreenConnection _conn = new();
+    /// <summary>How long to keep trying after the connection drops. Matches the theatre's reconnect grace.</summary>
+    public static readonly TimeSpan ReconnectWindow = TimeSpan.FromSeconds(60);
+
+    private static readonly TimeSpan[] ReconnectDelays =
+        [TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5)];
+
+    private ScreenConnection _conn = new();
     private readonly ClockSync _clock = new();
     private readonly SyncSettings _settings;
     private readonly CancellationTokenSource _cts = new();
-    private TaskCompletionSource<Welcome>? _welcome;
     private Task? _loop;
+    private int _reconnecting;
+    private volatile bool _disposed;
+
+    // Needed to reconnect.
+    private TheatreApi? _api;
+    private DeviceIdentity? _identity;
+    private string _screenId = "";
+    private string _name = "";
 
     public SyncEngine Engine { get; }
     public ClockSync Clock => _clock;
     public string Code { get; private set; } = "";
     public Welcome? Joined { get; private set; }
+    public ScreenInfo? Screen { get; private set; }
     public Item? CurrentItem { get; private set; }
     public IReadOnlyList<ViewerInfo> Viewers { get; private set; } = [];
     public IReadOnlyList<Role> Roles { get; private set; } = [];
@@ -37,6 +52,9 @@ public sealed class ScreenSession : IAsyncDisposable
     /// <summary>The host, or the acting host while the host is away: re-anchors instead of being corrected.</summary>
     public bool IsTimelineAuthority => Self?.IsTimelineAuthority == true;
 
+    /// <summary>True while the connection has dropped and the session is trying to get back in.</summary>
+    public bool IsReconnecting => Volatile.Read(ref _reconnecting) == 1;
+
     /// <summary>Convenience for enabling controls. The theatre enforces permissions regardless.</summary>
     public bool Can(string permission) => Self?.Can(permission) == true;
 
@@ -44,8 +62,16 @@ public sealed class ScreenSession : IAsyncDisposable
     public event Action<IReadOnlyList<ViewerInfo>>? ViewersChanged;
     public event Action<IReadOnlyList<Role>>? RolesChanged;
     public event Action<IReadOnlyList<CoHostInfo>>? CoHostsChanged;
+    public event Action<ScreenInfo>? ScreenChanged;
     public event Action<SyncStatus>? StatusChanged;
     public event Action<ServerError>? Error;
+
+    /// <summary>The connection dropped; playback continues locally while reconnecting.</summary>
+    public event Action? Reconnecting;
+
+    public event Action? Reconnected;
+
+    /// <summary>The session is over: rejected, kicked, banned, closed, replaced, or reconnecting gave up.</summary>
     public event Action<string>? Closed;
 
     public ScreenSession(IPlayback player, SyncSettings? settings = null)
@@ -53,13 +79,6 @@ public sealed class ScreenSession : IAsyncDisposable
         _settings = settings ?? SyncSettings.Default;
         Engine = new SyncEngine(player, () => _clock.TheatreNowMs, () => _clock.LocalNowMs, _settings) { Enabled = false };
         Engine.ReanchorRequested += (pos, at) => _ = _conn.SendAsync("reanchor", new { position = pos, at });
-        _conn.Message += OnMessage;
-        _conn.Closed += reason =>
-        {
-            // A rejection closes with code 4001 and the error code as the reason; don't wait 10 s for a welcome.
-            _welcome?.TrySetException(new TheatreException(0, $"connection closed ({reason})", reason));
-            Closed?.Invoke(reason);
-        };
     }
 
     /// <summary>Creates a screen on the theatre and joins it as host.</summary>
@@ -94,7 +113,19 @@ public sealed class ScreenSession : IAsyncDisposable
     {
         try
         {
-            await JoinAsync(api, identity, code, screenId, name, password, claim, ct);
+            _api = api;
+            _identity = identity;
+            _screenId = screenId;
+            _name = name;
+            Code = code;
+
+            var welcome = await ConnectAsync(password, claim, ct);
+            ApplyWelcome(welcome, notify: false);
+
+            // Clock-sync burst before the engine starts acting on anchors (it stays disabled until then).
+            await PingBurstAsync(_settings.BurstSamples);
+            Engine.Enabled = true;
+            _loop = Task.Run(RunLoop);
         }
         catch
         {
@@ -103,34 +134,107 @@ public sealed class ScreenSession : IAsyncDisposable
         }
     }
 
-    private async Task JoinAsync(TheatreApi api, DeviceIdentity identity, string code, string screenId, string name,
-                                 string? password, string? claim, CancellationToken ct)
+    /// <summary>Opens a fresh connection, sends hello and waits for the welcome. Rejections throw with their error code.</summary>
+    private async Task<Welcome> ConnectAsync(string? password, string? claim, CancellationToken ct)
     {
-        Code = code;
-        _welcome = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await _conn.ConnectAsync(api.WebSocketUrl(code), ct);
-        await _conn.SendAsync("hello", new
+        var conn = new ScreenConnection();
+        var welcome = new TaskCompletionSource<Welcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        conn.Message += msg =>
+        {
+            if (msg is ServerMessage.WelcomeMsg w) welcome.TrySetResult(w.Data);
+            else if (msg is ServerMessage.ErrorMsg e && !welcome.Task.IsCompleted) welcome.TrySetException(new TheatreException(0, e.Data.Message, e.Data.Code));
+            if (conn == _conn) OnMessage(msg);
+        };
+        conn.Closed += info =>
+        {
+            // A rejection closes with 4001 and the error code as the reason; fail the join at once instead of timing out.
+            welcome.TrySetException(new TheatreException(0, $"connection closed ({info.Reason})", info.Status == 4001 ? info.Reason : null));
+            OnConnectionClosed(conn, info);
+        };
+
+        var old = _conn;
+        _conn = conn;
+        if (old != conn) _ = old.DisposeAsync().AsTask();
+
+        await conn.ConnectAsync(_api!.WebSocketUrl(Code), ct);
+        await conn.SendAsync("hello", new
         {
             protocol = ProtocolInfo.Version,
-            token = identity.TokenFor(screenId),
-            name,
+            token = _identity!.TokenFor(_screenId),
+            name = _name,
             device = "windows",
             password,
             claim,
         });
+        return await welcome.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+    }
 
-        var welcome = await _welcome.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-        Joined = welcome;
-        CurrentItem = welcome.Item;
-        Roles = welcome.Roles;
-        CoHosts = welcome.CoHosts;
-        SetViewers(welcome.Viewers, welcome.Self);
+    private void ApplyWelcome(Welcome w, bool notify)
+    {
+        Joined = w;
+        Screen = w.Screen;
+        Code = w.Screen.Code;
+        CurrentItem = w.Item;
+        Roles = w.Roles;
+        CoHosts = w.CoHosts;
+        SetViewers(w.Viewers, w.Self);
+        Engine.ApplyAnchor(w.Anchor);
+        if (!notify) return;
+        ScreenChanged?.Invoke(w.Screen);
+        ItemChanged?.Invoke(w.Item);
+        RolesChanged?.Invoke(w.Roles);
+        CoHostsChanged?.Invoke(w.CoHosts);
+        ViewersChanged?.Invoke(w.Viewers);
+    }
 
-        // Clock-sync burst before the engine starts acting on anchors (it stays disabled until then).
-        Engine.ApplyAnchor(welcome.Anchor);
-        await PingBurstAsync(_settings.BurstSamples);
-        Engine.Enabled = true;
-        _loop = Task.Run(RunLoop);
+    private void OnConnectionClosed(ScreenConnection conn, ConnectionClosed info)
+    {
+        if (conn != _conn || _disposed || _loop is null) return; // stale socket, leaving, or still joining
+        if (info.IsFinal)
+        {
+            Closed?.Invoke(info.Reason);
+            return;
+        }
+        if (Interlocked.Exchange(ref _reconnecting, 1) == 0) _ = ReconnectLoopAsync(info.Reason);
+    }
+
+    /// <summary>
+    /// Network drop: keep playing on the last anchor and rejoin with the same token (no password needed: the theatre
+    /// remembers us). Gives up after <see cref="ReconnectWindow"/>, or at once on a real rejection.
+    /// </summary>
+    private async Task ReconnectLoopAsync(string reason)
+    {
+        Reconnecting?.Invoke();
+        var started = Stopwatch.StartNew();
+        for (int attempt = 0; !_disposed && started.Elapsed < ReconnectWindow; attempt++)
+        {
+            try
+            {
+                await Task.Delay(ReconnectDelays[Math.Min(attempt, ReconnectDelays.Length - 1)], _cts.Token);
+                var welcome = await ConnectAsync(null, null, _cts.Token);
+                ApplyWelcome(welcome, notify: true);
+                Volatile.Write(ref _reconnecting, 0);
+                Reconnected?.Invoke();
+                _ = PingBurstAsync(_settings.ResyncSamples);
+                return;
+            }
+            catch (OperationCanceledException) when (_disposed)
+            {
+                return;
+            }
+            catch (TheatreException e) when (e.Code is not null || e.Status == 404)
+            {
+                Volatile.Write(ref _reconnecting, 0);
+                if (!_disposed) Closed?.Invoke(e.Code ?? "closed"); // banned, closed, full…
+                return;
+            }
+            catch (Exception e) when (!_disposed)
+            {
+                reason = e.Message; // still offline; try again
+            }
+        }
+        Volatile.Write(ref _reconnecting, 0);
+        if (!_disposed) Closed?.Invoke($"couldn't reconnect ({reason})");
     }
 
     // ---- Commands (the theatre validates permissions) ---------------------------------
@@ -144,6 +248,24 @@ public sealed class ScreenSession : IAsyncDisposable
 
     public Task LoadUrlAsync(string url, string name, double? duration) =>
         _conn.SendAsync("load", new { kind = "url", name, duration, url });
+
+    // ---- Screen settings & invites -------------------------------------------------------
+
+    /// <summary>Changes screen settings (<c>screen.settings</c>). Only the given fields change; a password is needed to go private.</summary>
+    public Task UpdateSettingsAsync(string? name = null, bool? isPrivate = null, string? password = null, bool? hidden = null,
+                                    int? maxViewers = null, bool? showDevices = null) =>
+        _conn.SendAsync("settings.update", new
+        {
+            name,
+            visibility = isPrivate is bool p ? (p ? "private" : "public") : null,
+            password = string.IsNullOrEmpty(password) ? null : password,
+            hidden,
+            maxViewers,
+            showDevices,
+        });
+
+    /// <summary>New screen code (<c>screen.invite</c>); the old code and links stop working.</summary>
+    public Task RegenerateCodeAsync() => _conn.SendAsync("code.regenerate");
 
     // ---- Roles, moderation, host actions (theatre checks permissions and hierarchy) ------------
 
@@ -215,9 +337,6 @@ public sealed class ScreenSession : IAsyncDisposable
     {
         switch (msg)
         {
-            case ServerMessage.WelcomeMsg w:
-                _welcome?.TrySetResult(w.Data);
-                break;
             case ServerMessage.PongMsg p:
                 _clock.AddSample(p.Data.T0, p.Data.Ts, _clock.LocalNowMs);
                 break;
@@ -241,8 +360,12 @@ public sealed class ScreenSession : IAsyncDisposable
                 CoHosts = c.Data;
                 CoHostsChanged?.Invoke(c.Data);
                 break;
+            case ServerMessage.ScreenMsg sc:
+                Screen = sc.Data;
+                Code = sc.Data.Code;
+                ScreenChanged?.Invoke(sc.Data);
+                break;
             case ServerMessage.ErrorMsg e:
-                _welcome?.TrySetException(new TheatreException(0, e.Data.Message, e.Data.Code));
                 Error?.Invoke(e.Data);
                 break;
         }
@@ -274,7 +397,7 @@ public sealed class ScreenSession : IAsyncDisposable
                 last = now;
                 StatusChanged?.Invoke(Engine.Status);
 
-                if (now - lastResync >= _settings.ResyncEvery.TotalMilliseconds)
+                if (!IsReconnecting && now - lastResync >= _settings.ResyncEvery.TotalMilliseconds)
                 {
                     lastResync = now;
                     _ = PingBurstAsync(_settings.ResyncSamples);
@@ -284,8 +407,15 @@ public sealed class ScreenSession : IAsyncDisposable
         catch (OperationCanceledException) { /* session ended */ }
     }
 
+    /// <summary>Test hook: simulates a network drop, which should trigger a silent reconnect.</summary>
+    internal void SimulateNetworkDrop() => _conn.Abort();
+
+    /// <summary>Leaves the screen. Sends <c>leave</c> first so the theatre frees the seat at once (no reconnect grace).</summary>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
+        if (_loop is not null && _conn.IsOpen) await _conn.SendAsync("leave");
         _cts.Cancel();
         if (_loop is not null) await Task.WhenAny(_loop, Task.Delay(1000));
         await _conn.DisposeAsync();

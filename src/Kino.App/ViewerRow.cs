@@ -48,8 +48,12 @@ public sealed class ViewerRow
 
         var detail = new List<string>();
         if (viewer.Device is { } d) detail.Add(char.ToUpperInvariant(d[0]) + d[1..]);
-        detail.Add(viewer.Rtt is double rtt ? $"{rtt:0} ms" : "– ms");
-        if (viewer.Buffering) detail.Add("buffering");
+        if (!viewer.Connected) detail.Add("reconnecting…");
+        else
+        {
+            detail.Add(viewer.Rtt is double rtt ? $"{rtt:0} ms" : "– ms");
+            if (viewer.Buffering) detail.Add("buffering");
+        }
         Detail = string.Join(" · ", detail);
     }
 
@@ -60,6 +64,7 @@ public sealed class ViewerRow
     public Brush ColourBrush { get; }
     public Visibility BadgesVisibility => Badges.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MutedVisibility => Viewer.Muted ? Visibility.Visible : Visibility.Collapsed;
+    public double RowOpacity => Viewer.Connected ? 1.0 : 0.5;
 }
 
 /// <summary>Display model for one role in the roles page (x:Bind source).</summary>

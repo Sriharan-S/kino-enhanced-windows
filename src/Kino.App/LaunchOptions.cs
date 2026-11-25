@@ -2,9 +2,9 @@ namespace Kino;
 
 /// <summary>
 /// Command-line options. Mostly for development and automated sync tests:
-///   Kino.exe [media] [--profile p] [--theatre url | --directory url] [--name n] [--create "Screen"] [--join CODE]
+///   Kino.exe [media | kino://join/theatre/CODE] [--profile p] [--theatre url | --directory url] [--name n] [--create "Screen"] [--join CODE]
 ///            [--autoplay] [--codefile path] [--synclog path] [--perturb seconds] [--perturb-after seconds]
-///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles]
+///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...] [--panel viewers|roles|screen]
 /// By default the theatre list comes from the directory (servers.json). --theatre uses only that one theatre instead,
 /// e.g. a local `wrangler dev` at http://127.0.0.1:8787.
 /// </summary>
@@ -25,7 +25,10 @@ public sealed record LaunchOptions
     public int[]? Window { get; init; }
     public double Volume { get; init; } = 100;
 
-    /// <summary>Opens a panel once in a screen: "viewers" or "roles" (for screenshots and tests).</summary>
+    /// <summary>An invite link to join (kino://join/... or the web form), e.g. from clicking a link.</summary>
+    public Kino.Core.InviteLink? Invite { get; init; }
+
+    /// <summary>Opens a panel once in a screen: "viewers", "roles" or "screen" (for screenshots and tests).</summary>
     public string? Panel { get; init; }
 
     /// <summary>Host test hook: (seconds after autoplay, seek target) pairs, from "--seeks 20=226.8,28=99.1".</summary>
@@ -60,6 +63,7 @@ public sealed record LaunchOptions
                         double.Parse(p[0], System.Globalization.CultureInfo.InvariantCulture),
                         double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture))).ToArray(),
                 },
+                _ when Kino.Core.InviteLink.TryParse(a) is { } link => o with { Invite = link },
                 _ when !a.StartsWith("--") && o.Media is null => o with { Media = a },
                 _ => o,
             };
