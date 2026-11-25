@@ -26,6 +26,7 @@ public sealed record Anchor(string? ItemId, string State, double Position, doubl
 public sealed record Item(string Id, string Kind, string Name, double? Duration, string? Url)
 {
     public bool IsLocal => Kind == "local";
+    public bool IsYouTube => Kind == "youtube";
 }
 
 public sealed record ViewerInfo(string Id, string Name, string? Device, bool IsHost, double? Rtt, bool Buffering)

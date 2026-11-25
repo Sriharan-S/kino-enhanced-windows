@@ -20,7 +20,11 @@ public sealed class PlaylistRow
 
         string length = item.Duration is double d ? Format(d) : "";
         string sep = length.Length > 0 ? " · " : "";
-        if (!item.IsLocal)
+        if (item.IsYouTube)
+        {
+            Detail = $"{length}{sep}YouTube: everyone streams it";
+        }
+        else if (!item.IsLocal)
         {
             Detail = $"{length}{sep}Link: everyone streams it";
         }

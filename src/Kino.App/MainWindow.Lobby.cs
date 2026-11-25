@@ -48,7 +48,7 @@ public sealed partial class MainWindow
         LobbyPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         RolesPanel.Visibility = page == Page.Roles ? Visibility.Visible : Visibility.Collapsed;
         ScreenPanel.Visibility = page == Page.Screen ? Visibility.Visible : Visibility.Collapsed;
-        _videoHost.Visible = page == Page.Video;
+        _videoHost.Visible = page == Page.Video && !_ytActive;
         OverlayPopup.IsOpen = page == Page.Video && OverlayToggle.IsChecked == true;
         ReactionPopup.IsOpen = page == Page.Video && _session is not null;
         if (page != Page.Video) NoticePopup.IsOpen = false;
@@ -335,7 +335,7 @@ public sealed partial class MainWindow
     {
         bool ok = await RunSessionAction(async () =>
         {
-            var session = await ScreenSession.JoinResolvedAsync(found.Api, _identity, _player, found.Screen, DisplayName(), password);
+            var session = await ScreenSession.JoinResolvedAsync(found.Api, _identity, _switch, found.Screen, DisplayName(), password);
             return (session, found.Theatre);
         }, ShowJoinMessage);
 
@@ -393,7 +393,7 @@ public sealed partial class MainWindow
         RunSessionAction(async () =>
         {
             var theatre = await TheatreForNewScreenAsync();
-            var (session, created) = await ScreenSession.CreateAsync(_network!.Api(theatre), _identity, _player, req, DisplayName());
+            var (session, created) = await ScreenSession.CreateAsync(_network!.Api(theatre), _identity, _switch, req, DisplayName());
             if (_opt.CodeFile is not null) await File.WriteAllTextAsync(_opt.CodeFile, created.Code);
             return (session, theatre);
         }, text =>

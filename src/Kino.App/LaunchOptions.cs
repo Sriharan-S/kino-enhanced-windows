@@ -34,6 +34,9 @@ public sealed record LaunchOptions
     public bool SubShare { get; init; }
     public string? SubPick { get; init; }
 
+    /// <summary>Test hook: as host, add this YouTube link and play it.</summary>
+    public string? YouTubeLink { get; init; }
+
     /// <summary>Opens a panel once in a screen: "viewers", "roles" or "screen" (for screenshots and tests).</summary>
     public string? Panel { get; init; }
 
@@ -56,6 +59,7 @@ public sealed record LaunchOptions
                 "--sub" => o with { Sub = Next() },
                 "--sub-share" => o with { SubShare = true },
                 "--sub-pick" => o with { SubPick = Next() },
+                "--youtube" => o with { YouTubeLink = Next() },
                 "--name" => o with { Name = Next() },
                 "--create" => o with { Create = Next() },
                 "--join" => o with { Join = Next() },

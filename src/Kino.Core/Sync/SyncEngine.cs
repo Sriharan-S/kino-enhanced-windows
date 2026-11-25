@@ -35,8 +35,8 @@ public sealed class SyncEngine
     private readonly Func<double> _theatreNowMs;
     private readonly Func<double> _localNowMs;
     private readonly Action<double, Action> _schedule;
-    private readonly SyncSettings _s;
-    private readonly RateController _rate;
+    private SyncSettings _s;
+    private RateController _rate;
     private readonly object _gate = new();
 
     private Anchor? _anchor;
@@ -69,6 +69,23 @@ public sealed class SyncEngine
     /// anchor is never applied against an unsynced clock.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>Zones and rate limits; switched per item (e.g. <see cref="SyncSettings.YouTube"/>).</summary>
+    public SyncSettings Settings
+    {
+        get { lock (_gate) return _s; }
+        set
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(value, _s)) return;
+                ResetRate();
+                _s = value;
+                _rate = new RateController(value);
+                _drifts.Clear();
+            }
+        }
+    }
 
     /// <summary>
     /// When true, the engine only drives the player if <see cref="LoadedItemId"/> is the anchor's item. Otherwise it would

@@ -50,7 +50,11 @@ The **Playlist** tab in the side panel holds the screen's items: local files and
 
 - **Add files… / Add folder…** (with `playlist.add`): Kino reads each file's duration and sends only its **name and duration**.
   Paths and contents never leave your PC. Folders are added A–Z in natural order (`EP 2` before `EP 10`).
-- **Add link…** (with `playlist.add_external`): a direct video URL. Everyone streams it straight from the source.
+- **Add link…** (with `playlist.add_external`): a direct video URL, or a **YouTube** link. Everyone streams it straight from
+  the source. YouTube plays in the official YouTube player (in a WebView2 over the video area). Because YouTube only supports
+  coarse speed steps, there's no gentle speed correction: up to 0.5 s apart is fine, and beyond 1.5 s Kino seeks. Ads count as
+  buffering. A YouTube item moves on only when everyone has finished it, unless the host skips. (Some owners don't allow
+  playback in other apps; Kino says so.)
 - **Your copies:** Kino matches each local item to a file you've opened or offered, by **duration first, then name**.
   **Match my files…** offers a whole folder, and an item's menu has **Choose my file…** to pick one by hand.
   Each item shows ✓ (match), ✓ *different name*, ⚠ *length differs* or *Pick your file*. A mismatch only warns; it never blocks.

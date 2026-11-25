@@ -78,6 +78,13 @@ public sealed partial class MainWindow
             s.Engine.LoadedItemId = null;
             return;
         }
+        if (item.IsYouTube)
+        {
+            EnsureYouTubeLoaded(s, item);
+            return;
+        }
+        ShowYouTube(false);
+        s.Engine.Settings = Kino.Core.Sync.SyncSettings.Default;
 
         string? source = item.IsLocal ? (_mapping.TryGetValue(item.Id, out var f) ? f.Path : null) : item.Url;
         if (source is null)
@@ -242,12 +249,17 @@ public sealed partial class MainWindow
         string text = LinkBox.Text.Trim();
         if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
         {
-            ShowPlaylistStatus("Enter a full http(s) link to a video file.");
+            ShowPlaylistStatus("Enter a full https link: a YouTube video or a video file.");
+            return;
+        }
+        AddLinkRow.Visibility = Visibility.Collapsed;
+        if (YouTube.VideoId(text) is { } videoId)
+        {
+            await s.AddToPlaylistAsync([ScreenSession.NewItem.YouTube(videoId, await YouTubeTitleAsync(videoId))]);
             return;
         }
         string name = Uri.UnescapeDataString(uri.Segments.LastOrDefault()?.Trim('/') ?? "");
         if (name.Length == 0) name = uri.Host;
-        AddLinkRow.Visibility = Visibility.Collapsed;
         await s.AddToPlaylistAsync([ScreenSession.NewItem.Link(uri.ToString(), name)]);
     }
 

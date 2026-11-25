@@ -41,6 +41,9 @@
             <!-- The native video window is positioned exactly over this element. -->
             <Border x:Name="VideoArea" Grid.Column="0" Background="Black" />
 
+            <!-- YouTube items play here (official IFrame player); the native video window is hidden meanwhile. -->
+            <WebView2 x:Name="YouTubeView" Grid.Column="0" Visibility="Collapsed" DefaultBackgroundColor="Black" />
+
             <Grid x:Name="SidePanel" Grid.Column="1" Padding="12,4,12,8" RowSpacing="6"
                   Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid.RowDefinitions>

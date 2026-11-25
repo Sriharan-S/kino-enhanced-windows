@@ -163,6 +163,7 @@ public sealed partial class MainWindow
             return;
         }
         _player.SetVolume(e.NewValue);
+        _yt?.SetVolume(Math.Min(100, e.NewValue)); // YouTube has no boost
         _prefs.Volume = e.NewValue;
     }
 
@@ -183,6 +184,7 @@ public sealed partial class MainWindow
         MuteToggle.IsChecked = muted;
         MuteToggle.Content = muted ? "\U0001F507" : "\U0001F50A";
         _player.SetMuted(muted);
+        _yt?.SetMuted(muted);
     }
 
     // ---- Fullscreen ----------------------------------------------------------------------------------

@@ -5,6 +5,21 @@ public sealed record SyncSettings
 {
     public static readonly SyncSettings Default = new();
 
+    /// <summary>
+    /// YouTube items (spec §14.13): the IFrame API only offers coarse playback rates (0.25 steps), so there is no rate
+    /// correction. Up to 0.5 s is fine; beyond 1.5 s a seek fixes it. Its clock is coarser too, so the host re-anchors later.
+    /// </summary>
+    public static readonly SyncSettings YouTube = new()
+    {
+        EnterCorrection = 0.5,
+        ExitCorrection = 0.5,
+        HardSeek = 1.5,
+        MaxDeviation = 0,
+        PausedSeekTolerance = 0.25,
+        InitialSeekLatency = 0.5,
+        HostReanchor = 0.75,
+    };
+
     // Clock sync
     public int BurstSamples { get; init; } = 8;
     public TimeSpan BurstInterval { get; init; } = TimeSpan.FromMilliseconds(100);

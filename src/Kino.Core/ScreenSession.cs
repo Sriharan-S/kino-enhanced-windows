@@ -300,6 +300,7 @@ public sealed class ScreenSession : IAsyncDisposable
     {
         public static NewItem Local(string fileName, double? duration) => new("local", fileName, duration);
         public static NewItem Link(string url, string name, double? duration = null) => new("url", name, duration, url);
+        public static NewItem YouTube(string videoId, string name, double? duration = null) => new("youtube", name, duration, Media.YouTube.WatchUrl(videoId));
     }
 
     public Task AddToPlaylistAsync(IEnumerable<NewItem> items, int? at = null) =>
@@ -308,6 +309,9 @@ public sealed class ScreenSession : IAsyncDisposable
     public Task RemoveItemAsync(string itemId) => _conn.SendAsync("playlist.remove", new { id = itemId });
     public Task MoveItemAsync(string itemId, int to) => _conn.SendAsync("playlist.move", new { id = itemId, to });
     public Task PlayItemAsync(string itemId) => _conn.SendAsync("playlist.play", new { id = itemId });
+    /// <summary>YouTube items end when everyone has finished (spec §14.13): report that this player reached the end.</summary>
+    public Task ReportEndedAsync(string itemId) => _conn.SendAsync("item.ended", new { id = itemId });
+
     public Task SkipAsync(bool next) => _conn.SendAsync("skip", new { direction = next ? "next" : "previous" });
 
     public Task SetAutoAdvanceAsync(bool on) => _conn.SendAsync("settings.update", new { autoAdvance = on });

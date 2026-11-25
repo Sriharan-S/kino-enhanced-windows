@@ -22,6 +22,9 @@ public sealed partial class MainWindow : Window
     private readonly IntPtr _hwnd;
     private readonly VideoHost _videoHost;
     private readonly MpvPlayer _player;
+
+    /// <summary>What sessions drive: libmpv, or the YouTube player while a YouTube item is current.</summary>
+    private readonly Kino.Core.Media.PlaybackSwitch _switch;
     private readonly DispatcherQueue _ui;
     private readonly DeviceIdentity _identity;
 
@@ -57,6 +60,7 @@ public sealed partial class MainWindow : Window
 
         _videoHost = new VideoHost(_hwnd);
         _player = new MpvPlayer(_videoHost.Hwnd);
+        _switch = new Kino.Core.Media.PlaybackSwitch(_player);
         _player.SetVolume(volume); // the slider fired before the player existed
 
         _player.PositionChanged += pos => _ui.TryEnqueue(() => OnPosition(pos));
@@ -108,6 +112,13 @@ public sealed partial class MainWindow : Window
     {
         if (_opt.Media is not null) OpenMedia(_opt.Media);
         if (_opt.Create is not null) await CreateScreenAsync(new CreateScreenRequest(_opt.Create, "public"));
+        if (_opt.YouTubeLink is { } yt && _session is { } host && Kino.Core.Media.YouTube.VideoId(yt) is { } videoId)
+        {
+            await host.AddToPlaylistAsync([ScreenSession.NewItem.YouTube(videoId, await YouTubeTitleAsync(videoId))], at: 0);
+            for (int i = 0; i < 50 && !host.Playlist.Any(p => p.IsYouTube); i++) await Task.Delay(100);
+            await Task.Delay(1500);
+            if (host.Playlist.FirstOrDefault(p => p.IsYouTube) is { } item) await host.PlayItemAsync(item.Id);
+        }
         else if (_opt.Join is not null) await JoinByCodeAsync(_opt.Join.Trim());
         else if (_opt.Invite is { } link) await JoinInviteAsync(link);
     }
@@ -221,6 +232,7 @@ public sealed partial class MainWindow : Window
         SideColumn.Width = new GridLength(0);
         if (_page is Page.Roles or Page.Screen) ShowPage(Page.Video);
         _loadingItemId = null;
+        ShowYouTube(false);
         _subChoices.Clear();
         _ownSubs.Clear();
         DetachChat();
@@ -285,7 +297,7 @@ public sealed partial class MainWindow : Window
         OverlayText.Text = PlaylistOverlayHint(st.Zone) is { } hint ? $"{hint}\n{line}" : line;
 
         double qpc = Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
-        double pos = _player.GetPosition();
+        double pos = _switch.Position ?? double.NaN; // libmpv or YouTube, whichever is active
         _syncLog?.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{qpc:0.0},{pos:0.0000},{st.Drift:0.0000},{st.Rate:0.00000},{st.Zone},{_session.Engine.Anchor?.Seq}"));
 
