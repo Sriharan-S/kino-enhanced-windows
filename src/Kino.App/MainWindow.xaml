@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Screen bar: create / join (temporary until the lobby UI lands) -->
+        <!-- Screen bar: theatre for new screens, create / join by code (temporary until the lobby UI lands) -->
         <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220" />
@@ -22,7 +22,8 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="TheatreBox" Grid.Column="0" PlaceholderText="Theatre URL" />
+            <ComboBox x:Name="TheatrePicker" Grid.Column="0" HorizontalAlignment="Stretch"
+                      PlaceholderText="Loading theatres…" IsEnabled="False" />
             <TextBox x:Name="NameBox" Grid.Column="1" PlaceholderText="Your name" MaxLength="32" />
             <Button x:Name="CreateButton" Grid.Column="2" Content="Create screen" Click="OnCreateClick" />
             <TextBox x:Name="CodeBox" Grid.Column="3" PlaceholderText="Code" MaxLength="8" CharacterCasing="Upper" />

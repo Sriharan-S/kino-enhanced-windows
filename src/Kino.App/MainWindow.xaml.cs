@@ -8,6 +8,7 @@ using Kino.Core.Sync;
 using Kino.Player;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
@@ -24,7 +25,15 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueue _ui;
     private readonly DeviceIdentity _identity;
 
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static readonly TimeSpan ProbeMaxAge = TimeSpan.FromSeconds(60);
+
+    private TheatreNetwork? _network;
+    private Task<TheatreProbe[]>? _probes;
+    private DateTime _probedAt;
+
     private ScreenSession? _session;
+    private TheatreEntry? _sessionTheatre;
     private string? _loadedFileName;
     private bool _announcePending;
     private bool _paused = true;
@@ -49,7 +58,6 @@ public sealed partial class MainWindow : Window
             AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 800));
         Title = options.Profile == "default" ? "Kino" : $"Kino — {options.Profile}";
 
-        TheatreBox.Text = options.Theatre;
         NameBox.Text = options.Name;
         VolumeSlider.Value = options.Volume;
 
@@ -70,6 +78,7 @@ public sealed partial class MainWindow : Window
         {
             LayoutOverlays();
             OverlayPopup.IsOpen = OverlayToggle.IsChecked == true;
+            await LoadTheatresAsync();
             await AutoStartAsync();
         };
         Closed += async (_, _) =>
@@ -96,6 +105,76 @@ public sealed partial class MainWindow : Window
         else if (_opt.Join is not null) await JoinScreenAsync(_opt.Join);
     }
 
+    // ---- Theatres ----------------------------------------------------------------------------
+
+    /// <summary>Loads the theatre list (directory → cache → bundled, or the --theatre override) and pings each one.</summary>
+    private async Task LoadTheatresAsync()
+    {
+        TheatreList list;
+        if (_opt.Theatre is { } url)
+        {
+            var u = new Uri(url);
+            list = new([new TheatreEntry("custom", u.Authority, url)], DirectorySource.Override);
+        }
+        else
+        {
+            var dir = _opt.Directory is { } d ? new Uri(d) : TheatreDirectory.DefaultUrl;
+            list = await TheatreDirectory.LoadAsync(Http, dir, TheatreDirectory.DefaultCachePath);
+        }
+
+        _network = new TheatreNetwork(list.Theatres, Http);
+        ToolTipService.SetToolTip(TheatrePicker, $"Theatre for new screens · list: {list.Source.ToString().ToLowerInvariant()}");
+        RefreshTheatrePicker(null);
+        TheatrePicker.IsEnabled = true;
+        _ = ProbeTheatresAsync();
+    }
+
+    private Task<TheatreProbe[]> ProbeTheatresAsync()
+    {
+        _probedAt = DateTime.UtcNow;
+        var probes = _network!.ProbeAllAsync();
+        _probes = probes;
+        probes.ContinueWith(t => _ui.TryEnqueue(() => { if (_probes == probes) RefreshTheatrePicker(t.Result); }),
+                            TaskContinuationOptions.OnlyOnRanToCompletion);
+        return probes;
+    }
+
+    /// <summary>Item 0 is "Fastest"; item i is <c>_network.Theatres[i - 1]</c>.</summary>
+    private void RefreshTheatrePicker(TheatreProbe[]? probes)
+    {
+        int selected = Math.Max(0, TheatrePicker.SelectedIndex);
+        var fastest = probes is null ? null : TheatreNetwork.Fastest(probes);
+
+        TheatrePicker.Items.Clear();
+        TheatrePicker.Items.Add(fastest is null ? "Fastest theatre" : $"Fastest ({TheatreName(fastest)})");
+        for (int i = 0; i < _network!.Theatres.Count; i++)
+        {
+            var p = probes?[i];
+            string name = p is null ? _network.Theatres[i].Name : TheatreName(p);
+            string state = p is null ? "" : p.Usable ? $" · {p.RttMs:0} ms" : " · unavailable";
+            TheatrePicker.Items.Add(name + state);
+        }
+        TheatrePicker.SelectedIndex = Math.Min(selected, TheatrePicker.Items.Count - 1);
+    }
+
+    private static string TheatreName(TheatreProbe p) => p.Info?.Name ?? p.Theatre.Name;
+
+    /// <summary>The picked theatre, or the fastest usable one. Re-pings if the last ping is stale.</summary>
+    private async Task<TheatreEntry> TheatreForNewScreenAsync()
+    {
+        if (_network is null || _probes is null) throw new InvalidOperationException("Theatre list is still loading");
+        var probes = DateTime.UtcNow - _probedAt > ProbeMaxAge ? await ProbeTheatresAsync() : await _probes;
+
+        int idx = TheatrePicker.SelectedIndex;
+        if (idx > 0)
+        {
+            var p = probes[idx - 1];
+            return p.Usable ? p.Theatre
+                : throw new InvalidOperationException($"{TheatreName(p)} is unavailable ({p.Failure ?? p.Info?.Status ?? "unknown"})");
+        }
+        return TheatreNetwork.Fastest(probes)?.Theatre ?? throw new InvalidOperationException("No theatre is reachable");
+    }
+
     // ---- Screen create / join -----------------------------------------------------------
 
     private async void OnCreateClick(object sender, RoutedEventArgs e) => await CreateScreenAsync("Kino screen");
@@ -106,31 +185,42 @@ public sealed partial class MainWindow : Window
     {
         await RunSessionAction(async () =>
         {
-            var api = new TheatreApi(new Uri(TheatreBox.Text.Trim()));
-            var (session, created) = await ScreenSession.CreateAsync(api, _identity, _player,
+            var theatre = await TheatreForNewScreenAsync();
+            var (session, created) = await ScreenSession.CreateAsync(_network!.Api(theatre), _identity, _player,
                 new CreateScreenRequest(screenName, "public"), DisplayName());
             if (_opt.CodeFile is not null) await File.WriteAllTextAsync(_opt.CodeFile, created.Code);
-            return session;
+            return (session, theatre);
         });
     }
 
+    /// <summary>Codes are looked up on every theatre in parallel, so the viewer never has to pick one.</summary>
     private async Task JoinScreenAsync(string code)
     {
         await RunSessionAction(async () =>
         {
-            var api = new TheatreApi(new Uri(TheatreBox.Text.Trim()));
-            return await ScreenSession.JoinByCodeAsync(api, _identity, _player, code.Trim(), DisplayName());
+            if (_network is null) throw new InvalidOperationException("Theatre list is still loading");
+            var (found, unreachable) = await _network.ResolveAsync(code.Trim());
+            if (found is null)
+                throw new InvalidOperationException(unreachable > 0
+                    ? $"no screen with code {code.Trim()} ({unreachable} theatre(s) unreachable)"
+                    : $"no screen with code {code.Trim()}");
+            if (found.Screen.RequiresPassword)
+                throw new InvalidOperationException("this screen is private; password entry arrives with the lobby UI");
+
+            var session = await ScreenSession.JoinResolvedAsync(found.Api, _identity, _player, found.Screen, DisplayName());
+            return (session, found.Theatre);
         });
     }
 
-    private async Task RunSessionAction(Func<Task<ScreenSession>> action)
+    private async Task RunSessionAction(Func<Task<(ScreenSession Session, TheatreEntry Theatre)>> action)
     {
         CreateButton.IsEnabled = JoinButton.IsEnabled = false;
         try
         {
             if (_session is not null) { await _session.DisposeAsync(); _session = null; }
             SessionText.Text = "Connecting…";
-            var s = await action();
+            var (s, theatre) = await action();
+            _sessionTheatre = theatre;
             AttachSession(s);
         }
         catch (Exception ex)
@@ -170,7 +260,8 @@ public sealed partial class MainWindow : Window
         if (_session is null) return;
         string role = _session.IsHost ? "Host" : "Viewer";
         int count = _session.Viewers.Count;
-        SessionText.Text = $"{_session.Joined!.Screen.Name} · code {_session.Code} · {role} · {count} viewer{(count == 1 ? "" : "s")}";
+        string theatre = _sessionTheatre is null ? "" : $" · {_sessionTheatre.Name}";
+        SessionText.Text = $"{_session.Joined!.Screen.Name}{theatre} · code {_session.Code} · {role} · {count} viewer{(count == 1 ? "" : "s")}";
     }
 
     private void OnItemChanged(Item? item)
@@ -190,6 +281,21 @@ public sealed partial class MainWindow : Window
         {
             await Task.Delay(1500);
             await _session.PlayAsync();
+            _ = RunScriptedSeeksAsync(_session);
+        }
+    }
+
+    /// <summary>Test hook (--seeks): host seeks on a schedule, for repeatable live tests.</summary>
+    private async Task RunScriptedSeeksAsync(ScreenSession session)
+    {
+        double elapsed = 0;
+        foreach (var (after, to) in _opt.Seeks.OrderBy(s => s.After))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(after - elapsed));
+            elapsed = after;
+            if (_session != session) return;
+            _syncLog?.WriteLine($"# host seek to {to.ToString(CultureInfo.InvariantCulture)}");
+            await session.SeekAsync(to);
         }
     }
 

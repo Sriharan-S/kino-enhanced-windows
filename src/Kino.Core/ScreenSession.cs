@@ -56,6 +56,13 @@ public sealed class ScreenSession : IAsyncDisposable
         TheatreApi api, DeviceIdentity identity, IPlayback player, string code, string displayName, string? password = null, CancellationToken ct = default)
     {
         var resolved = await api.ResolveAsync(code, ct) ?? throw new TheatreException(404, "screen not found");
+        return await JoinResolvedAsync(api, identity, player, resolved, displayName, password, ct);
+    }
+
+    /// <summary>Joins a screen that has already been resolved (e.g. by <see cref="TheatreNetwork.ResolveAsync"/>).</summary>
+    public static async Task<ScreenSession> JoinResolvedAsync(
+        TheatreApi api, DeviceIdentity identity, IPlayback player, ResolveResponse resolved, string displayName, string? password = null, CancellationToken ct = default)
+    {
         var session = new ScreenSession(player);
         await session.JoinAsync(api, identity, resolved.Code, resolved.ScreenId, displayName, password, claim: null, ct);
         return session;

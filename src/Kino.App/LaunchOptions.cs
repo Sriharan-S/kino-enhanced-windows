@@ -2,15 +2,18 @@ namespace Kino;
 
 /// <summary>
 /// Command-line options. Mostly for development and automated sync tests:
-///   Kino.exe [media] [--profile p] [--theatre url] [--name n] [--create "Screen"] [--join CODE]
+///   Kino.exe [media] [--profile p] [--theatre url | --directory url] [--name n] [--create "Screen"] [--join CODE]
 ///            [--autoplay] [--codefile path] [--synclog path] [--perturb seconds] [--perturb-after seconds]
-///            [--window x,y,w,h] [--volume 0-200]
+///            [--window x,y,w,h] [--volume 0-200] [--seeks after=to,...]
+/// By default the theatre list comes from the directory (servers.json). --theatre uses only that one theatre instead,
+/// e.g. a local `wrangler dev` at http://127.0.0.1:8787.
 /// </summary>
 public sealed record LaunchOptions
 {
     public string? Media { get; init; }
     public string Profile { get; init; } = "default";
-    public string Theatre { get; init; } = "http://127.0.0.1:8787";
+    public string? Theatre { get; init; }
+    public string? Directory { get; init; }
     public string Name { get; init; } = Environment.UserName;
     public string? Create { get; init; }
     public string? Join { get; init; }
@@ -21,6 +24,9 @@ public sealed record LaunchOptions
     public double PerturbAfter { get; init; } = 20;
     public int[]? Window { get; init; }
     public double Volume { get; init; } = 100;
+
+    /// <summary>Host test hook: (seconds after autoplay, seek target) pairs, from "--seeks 20=226.8,28=99.1".</summary>
+    public (double After, double To)[] Seeks { get; init; } = [];
 
     public static LaunchOptions Parse(string[] args)
     {
@@ -33,6 +39,7 @@ public sealed record LaunchOptions
             {
                 "--profile" => o with { Profile = Next() },
                 "--theatre" => o with { Theatre = Next() },
+                "--directory" => o with { Directory = Next() },
                 "--name" => o with { Name = Next() },
                 "--create" => o with { Create = Next() },
                 "--join" => o with { Join = Next() },
@@ -43,6 +50,12 @@ public sealed record LaunchOptions
                 "--perturb-after" => o with { PerturbAfter = double.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture) },
                 "--volume" => o with { Volume = double.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture) },
                 "--window" => o with { Window = Next().Split(',').Select(int.Parse).ToArray() },
+                "--seeks" => o with
+                {
+                    Seeks = Next().Split(',').Select(p => p.Split('=')).Select(p => (
+                        double.Parse(p[0], System.Globalization.CultureInfo.InvariantCulture),
+                        double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture))).ToArray(),
+                },
                 _ when !a.StartsWith("--") && o.Media is null => o with { Media = a },
                 _ => o,
             };
