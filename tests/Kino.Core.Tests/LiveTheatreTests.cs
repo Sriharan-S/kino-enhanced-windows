@@ -203,10 +203,11 @@ public class LiveTheatreTests
 
     private static async Task WaitFor(ScreenSession s, Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        // Generous: reconnect backoff plus round trips to a real theatre can take several seconds.
+        var deadline = DateTime.UtcNow.AddSeconds(20);
         while (!condition())
         {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException("condition not met within 10 s");
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("condition not met within 20 s");
             await Task.Delay(50);
         }
     }
