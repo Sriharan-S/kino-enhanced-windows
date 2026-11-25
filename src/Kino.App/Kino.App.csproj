@@ -6,6 +6,8 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Kino</RootNamespace>
     <AssemblyName>Kino</AssemblyName>
+    <Version>0.1.0</Version>
+    <Product>Kino</Product>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -30,6 +32,14 @@
     <ProjectReference Include="..\Kino.Player\Kino.Player.csproj" />
     <ProjectReference Include="..\Kino.Core\Kino.Core.csproj" />
   </ItemGroup>
+
+  <!-- Unpackaged WinUI publish leaves out the resource index and compiled XAML; without them the window can't load. -->
+  <Target Name="CopyXamlResourcesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_KinoXamlResources Include="$(OutDir)$(TargetName).pri;$(OutDir)*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_KinoXamlResources)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 
 </Project>

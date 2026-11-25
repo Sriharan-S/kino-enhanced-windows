@@ -132,6 +132,15 @@ $kino = ".\src\Kino.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\Kino.e
 & $kino                                        # then use Open…, Create screen or Join
 ```
 
+## Portable release build
+
+```powershell
+.\tools\Publish-Portable.ps1     # → dist\Kino-<version>-win-x64.zip (self-contained, about 135 MB)
+```
+
+Unzip anywhere and run `Kino.exe`. No installer or admin rights are needed: .NET, the Windows App SDK and libmpv are
+included. The version comes from `<Version>` in `src/Kino.App/Kino.App.csproj`.
+
 ## Try sync with two windows on one PC
 
 ```powershell
