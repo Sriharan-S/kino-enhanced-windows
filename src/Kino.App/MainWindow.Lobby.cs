@@ -33,13 +33,23 @@ public sealed partial class MainWindow
 
     // ---- Lobby visibility -------------------------------------------------------------------
 
-    private void ShowLobby(bool show)
+    private enum Page { Video, Lobby, Roles }
+
+    private Page _page = Page.Video;
+
+    private void ShowLobby(bool show) => ShowPage(show ? Page.Lobby : Page.Video);
+
+    /// <summary>Lobby and roles pages cover the stage. The native video window is hidden then (XAML can't draw over it).</summary>
+    private void ShowPage(Page page)
     {
+        _page = page;
+        bool show = page == Page.Lobby;
         _lobbyVisible = show;
         LobbyPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        _videoHost.Visible = !show; // XAML can't draw over the native video window
-        OverlayPopup.IsOpen = !show && OverlayToggle.IsChecked == true;
-        LobbyButton.Content = show ? "Back to video" : "Lobby";
+        RolesPanel.Visibility = page == Page.Roles ? Visibility.Visible : Visibility.Collapsed;
+        _videoHost.Visible = page == Page.Video;
+        OverlayPopup.IsOpen = page == Page.Video && OverlayToggle.IsChecked == true;
+        LobbyButton.Content = page == Page.Video ? "Lobby" : "Back to video";
 
         if (_lobbyTimer is null)
         {
@@ -58,7 +68,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private void OnLobbyButtonClick(object sender, RoutedEventArgs e) => ShowLobby(!_lobbyVisible);
+    private void OnLobbyButtonClick(object sender, RoutedEventArgs e) => ShowPage(_page == Page.Video ? Page.Lobby : Page.Video);
 
     // ---- Theatres ----------------------------------------------------------------------------
 

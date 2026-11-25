@@ -56,6 +56,52 @@ public class ProtocolTests
     }
 
     [Fact]
+    public void Viewer_roles_and_permissions_parse()
+    {
+        const string json = """
+            {"type":"viewers","data":[{"id":"0f9e8d7c6b5a","name":"Bob","device":null,"isHost":false,"rtt":120,"buffering":false,
+              "roles":["r1"],"coHost":2,"actingHost":true,"muted":true,"allow":["playback.skip"],"deny":["chat.gif"],
+              "permissions":["playback.toggle","chat.send"]}]}
+            """;
+        var v = Assert.IsType<ServerMessage.ViewersMsg>(ServerMessage.Parse(json)).Data.Single();
+        Assert.Equal(["r1"], v.Roles);
+        Assert.Equal(2, v.CoHost);
+        Assert.True(v.ActingHost && v.Muted && v.IsTimelineAuthority);
+        Assert.True(v.Can(Permissions.PlaybackToggle));
+        Assert.False(v.Can(Permissions.PlaybackSeek));
+        Assert.Equal(["chat.gif"], v.Deny);
+    }
+
+    [Fact]
+    public void Viewers_from_an_older_theatre_still_parse()
+    {
+        var v = Assert.IsType<ServerMessage.ViewersMsg>(ServerMessage.Parse(
+            """{"type":"viewers","data":[{"id":"a","name":"A","device":"web","isHost":true,"rtt":null,"buffering":false}]}""")).Data.Single();
+        Assert.Empty(v.Permissions);
+        Assert.Null(v.CoHost);
+    }
+
+    [Fact]
+    public void Rank_matches_the_theatre()
+    {
+        Role[] roles =
+        [
+            new("cohost", "Co-host", null, 900, [], true),
+            new("viewer", "Viewer", null, 0, [], true),
+            new("r1", "DJ", null, 5, [], false),
+            new("r2", "Mod", null, 10, [], false),
+        ];
+        ViewerInfo V(bool host = false, int? coHost = null, bool acting = false, params string[] r) =>
+            new("x", "x", null, host, null, false) { CoHost = coHost, ActingHost = acting, Roles = r };
+
+        Assert.Equal(1000, Permissions.RankOf(V(host: true), roles));
+        Assert.Equal(900, Permissions.RankOf(V(coHost: 1), roles));
+        Assert.Equal(900, Permissions.RankOf(V(acting: true), roles));
+        Assert.Equal(10, Permissions.RankOf(V(r: ["r1", "r2"]), roles));
+        Assert.Equal(0, Permissions.RankOf(V(r: ["gone"]), roles));
+    }
+
+    [Fact]
     public void Unknown_types_are_tolerated()
     {
         Assert.IsType<ServerMessage.Unknown>(ServerMessage.Parse("""{"type":"future.thing","data":{"x":1}}"""));

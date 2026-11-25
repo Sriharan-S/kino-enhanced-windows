@@ -42,4 +42,45 @@ public class LiveTheatreTests
         Assert.False(joined.IsHost);
         Assert.Equal(2, joined.Viewers.Count);
     }
+
+    [Fact]
+    public async Task Co_host_takes_over_the_timeline_while_the_host_is_away()
+    {
+        if (Url is null) return;
+        var api = new TheatreApi(new Uri(Url));
+        var hostId = DeviceIdentity.LoadOrCreate("test-live-host");
+        var coId = DeviceIdentity.LoadOrCreate("test-live-viewer");
+
+        var (host, created) = await ScreenSession.CreateAsync(api, hostId, new SimPlayer(), new CreateScreenRequest("Handover test", "public"), "Host");
+        var resolved = (await api.ResolveAsync(created.Code))!;
+        await using var co = await ScreenSession.JoinResolvedAsync(api, coId, new SimPlayer(), resolved, "Co");
+        Assert.False(co.Engine.IsHost);
+
+        await WaitFor(co, () => co.Viewers.Count == 2);
+        await host.SetCoHostAsync(co.Self!.Id, true);
+        await WaitFor(co, () => co.Self?.CoHost == 1);
+        Assert.True(co.Can(Permissions.ViewersKick)); // co-hosts get every permission
+        Assert.False(co.IsTimelineAuthority);
+
+        await host.DisposeAsync(); // host leaves
+        await WaitFor(co, () => co.Self?.ActingHost == true);
+        Assert.True(co.IsTimelineAuthority);
+        Assert.True(co.Engine.IsHost); // now re-anchors instead of being corrected
+
+        await using var back = await ScreenSession.JoinResolvedAsync(api, hostId, new SimPlayer(), resolved, "Host");
+        Assert.True(back.IsHost);
+        await WaitFor(co, () => co.Self?.ActingHost == false);
+        Assert.False(co.Engine.IsHost);
+        await back.CloseScreenAsync();
+    }
+
+    private static async Task WaitFor(ScreenSession s, Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("condition not met within 10 s");
+            await Task.Delay(50);
+        }
+    }
 }

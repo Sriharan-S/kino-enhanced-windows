@@ -22,12 +22,28 @@ public sealed class ScreenSession : IAsyncDisposable
     public ClockSync Clock => _clock;
     public string Code { get; private set; } = "";
     public Welcome? Joined { get; private set; }
-    public bool IsHost => Joined?.Self.IsHost == true;
     public Item? CurrentItem { get; private set; }
     public IReadOnlyList<ViewerInfo> Viewers { get; private set; } = [];
+    public IReadOnlyList<Role> Roles { get; private set; } = [];
+
+    /// <summary>Co-hosts in priority order, including ones who aren't present.</summary>
+    public IReadOnlyList<CoHostInfo> CoHosts { get; private set; } = [];
+
+    /// <summary>This viewer's current entry. Roles, co-host status and permissions change during a session.</summary>
+    public ViewerInfo? Self { get; private set; }
+
+    public bool IsHost => Self?.IsHost == true;
+
+    /// <summary>The host, or the acting host while the host is away: re-anchors instead of being corrected.</summary>
+    public bool IsTimelineAuthority => Self?.IsTimelineAuthority == true;
+
+    /// <summary>Convenience for enabling controls. The theatre enforces permissions regardless.</summary>
+    public bool Can(string permission) => Self?.Can(permission) == true;
 
     public event Action<Item?>? ItemChanged;
     public event Action<IReadOnlyList<ViewerInfo>>? ViewersChanged;
+    public event Action<IReadOnlyList<Role>>? RolesChanged;
+    public event Action<IReadOnlyList<CoHostInfo>>? CoHostsChanged;
     public event Action<SyncStatus>? StatusChanged;
     public event Action<ServerError>? Error;
     public event Action<string>? Closed;
@@ -105,9 +121,10 @@ public sealed class ScreenSession : IAsyncDisposable
 
         var welcome = await _welcome.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
         Joined = welcome;
-        Engine.IsHost = welcome.Self.IsHost;
         CurrentItem = welcome.Item;
-        Viewers = welcome.Viewers;
+        Roles = welcome.Roles;
+        CoHosts = welcome.CoHosts;
+        SetViewers(welcome.Viewers, welcome.Self);
 
         // Clock-sync burst before the engine starts acting on anchors (it stays disabled until then).
         Engine.ApplyAnchor(welcome.Anchor);
@@ -128,7 +145,71 @@ public sealed class ScreenSession : IAsyncDisposable
     public Task LoadUrlAsync(string url, string name, double? duration) =>
         _conn.SendAsync("load", new { kind = "url", name, duration, url });
 
+    // ---- Roles, moderation, host actions (theatre checks permissions and hierarchy) ------------
+
+    public Task CreateRoleAsync(string name, string? colour, IEnumerable<string> permissions, int? position = null) =>
+        _conn.SendAsync("roles.create", new { name, colour, permissions = permissions.ToArray(), position });
+
+    /// <summary>Custom roles: name, colour (null clears it), permissions and rank. The Viewer role: permissions only.</summary>
+    public Task UpdateRoleAsync(string id, IEnumerable<string> permissions, (string Name, string? Colour, int Position)? details = null)
+    {
+        // A dictionary, so an explicit null colour is sent (records drop nulls when serialising).
+        var data = new Dictionary<string, object?> { ["id"] = id, ["permissions"] = permissions.ToArray() };
+        if (details is var (name, colour, position))
+        {
+            data["name"] = name;
+            data["colour"] = colour;
+            data["position"] = position;
+        }
+        return _conn.SendAsync("roles.update", data);
+    }
+
+    public Task DeleteRoleAsync(string id) => _conn.SendAsync("roles.delete", new { id });
+
+    public Task AssignRoleAsync(string viewerId, string roleId, bool assigned) =>
+        _conn.SendAsync("roles.assign", new { viewer = viewerId, role = roleId, assigned });
+
+    public Task SetOverridesAsync(string viewerId, IEnumerable<string> allow, IEnumerable<string> deny) =>
+        _conn.SendAsync("viewer.overrides", new { viewer = viewerId, allow = allow.ToArray(), deny = deny.ToArray() });
+
+    public Task MuteAsync(string viewerId, bool muted) => _conn.SendAsync("viewer.mute", new { viewer = viewerId, muted });
+    public Task KickAsync(string viewerId) => _conn.SendAsync("viewer.kick", new { viewer = viewerId });
+    public Task BanAsync(string viewerId) => _conn.SendAsync("viewer.ban", new { viewer = viewerId });
+
+    /// <summary>Host only: co-hosts in priority order.</summary>
+    public Task SetCoHostsAsync(IEnumerable<string> viewerIds) => _conn.SendAsync("cohosts.set", new { viewers = viewerIds.ToArray() });
+
+    public Task TransferHostAsync(string viewerId) => _conn.SendAsync("host.transfer", new { viewer = viewerId });
+    public Task CloseScreenAsync() => _conn.SendAsync("screen.close");
+
+    /// <summary>Host only: adds a co-host at the lowest priority, or removes one. Keeps co-hosts who aren't present.</summary>
+    public Task SetCoHostAsync(string viewerId, bool coHost)
+    {
+        var ids = CoHosts.Select(c => c.Id).Where(id => id != viewerId).ToList();
+        if (coHost) ids.Add(viewerId);
+        return SetCoHostsAsync(ids);
+    }
+
+    /// <summary>Host only: moves a co-host up (-1) or down (+1) in priority.</summary>
+    public Task MoveCoHostAsync(string viewerId, int delta)
+    {
+        var ids = CoHosts.Select(c => c.Id).ToList();
+        int i = ids.IndexOf(viewerId), j = i + delta;
+        if (i < 0 || j < 0 || j >= ids.Count) return Task.CompletedTask;
+        (ids[i], ids[j]) = (ids[j], ids[i]);
+        return SetCoHostsAsync(ids);
+    }
+
     // ---- Internals -------------------------------------------------------------------
+
+    private void SetViewers(IReadOnlyList<ViewerInfo> viewers, ViewerInfo? self)
+    {
+        Viewers = viewers;
+        string? myId = self?.Id ?? Joined?.Self.Id;
+        Self = viewers.FirstOrDefault(v => v.Id == myId) ?? self ?? Self;
+        // Becoming acting host (or handing control back) switches the engine between correcting and re-anchoring.
+        Engine.IsHost = Self?.IsTimelineAuthority == true;
+    }
 
     private void OnMessage(ServerMessage msg)
     {
@@ -149,8 +230,16 @@ public sealed class ScreenSession : IAsyncDisposable
                 ItemChanged?.Invoke(i.Data);
                 break;
             case ServerMessage.ViewersMsg v:
-                Viewers = v.Data;
+                SetViewers(v.Data, null);
                 ViewersChanged?.Invoke(v.Data);
+                break;
+            case ServerMessage.RolesMsg r:
+                Roles = r.Data;
+                RolesChanged?.Invoke(r.Data);
+                break;
+            case ServerMessage.CoHostsMsg c:
+                CoHosts = c.Data;
+                CoHostsChanged?.Invoke(c.Data);
                 break;
             case ServerMessage.ErrorMsg e:
                 _welcome?.TrySetException(new TheatreException(0, e.Data.Message, e.Data.Code));

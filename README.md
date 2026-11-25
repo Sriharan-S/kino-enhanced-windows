@@ -32,6 +32,18 @@ The app opens on the **lobby**:
 - **Lobby / Back to video** switches between the lobby and the player. Playback keeps running while the lobby is open.
 - `--theatre http://127.0.0.1:8787` uses only a local `wrangler dev` theatre instead of the directory.
 
+## Roles, co-hosts and moderation
+
+Once in a screen, **Viewers** opens a panel beside the video. It lists everyone, with Host / Acting host / Co-host #n, their roles,
+device and ping. Click a viewer for what you're allowed to do:
+
+- **Host only:** make or remove co-hosts and set their priority, make someone else the host, close the screen.
+- **With permission, on viewers ranked below you:** assign roles, set per-viewer overrides (**Permissions…**), mute chat, kick, ban.
+
+**Roles…** (for viewers with `roles.manage`) lets you create, edit and delete roles below your own rank. You can't grant permissions
+you don't have. When the host drops out, the top co-host who is present takes over as **acting host**; the host takes back control on
+return. The theatre enforces all of this. The app just hides or disables what would be refused.
+
 Opt-in live test against a real theatre: `$env:KINO_LIVE_THEATRE="https://kino-aurora.srie.workers.dev"; dotnet test tests\Kino.Core.Tests`.
 
 Visual Studio is optional. Everything builds with the `dotnet` CLI.

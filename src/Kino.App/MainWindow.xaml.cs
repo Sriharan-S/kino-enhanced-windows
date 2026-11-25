@@ -111,28 +111,67 @@ public sealed partial class MainWindow : Window
     private void AttachSession(ScreenSession s)
     {
         _session = s;
+        _fatalMessage = null;
         UpdateSessionText();
-        LeaveButton.Visibility = Visibility.Visible;
-        PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = s.IsHost;
+        LeaveButton.Visibility = ViewersToggle.Visibility = Visibility.Visible;
         ShowLobby(false);
+        OnPermissionsChanged();
 
         s.StatusChanged += st => _ui.TryEnqueue(() => { if (_session == s) OnSyncStatus(st); });
-        s.ViewersChanged += _ => _ui.TryEnqueue(() => { if (_session == s) UpdateSessionText(); });
+        s.ViewersChanged += _ => _ui.TryEnqueue(() =>
+        {
+            if (_session != s) return;
+            UpdateSessionText();
+            OnPermissionsChanged();
+        });
+        s.RolesChanged += _ => _ui.TryEnqueue(() => { if (_session == s) OnPermissionsChanged(); });
+        s.CoHostsChanged += _ => _ui.TryEnqueue(() => { if (_session == s) RenderViewers(); });
         s.ItemChanged += item => _ui.TryEnqueue(() => { if (_session == s) OnItemChanged(item); });
-        s.Error += err => _ui.TryEnqueue(() => { if (_session == s) OverlayText.Text = $"{err.Code}: {err.Message}"; });
-        s.Closed += reason => _ui.TryEnqueue(() =>
+        s.Error += err => _ui.TryEnqueue(() =>
+        {
+            if (_session != s) return;
+            if (err.Code is "kicked" or "banned" or "closed") _fatalMessage = err.Message;
+            else ShowActionError(err.Message);
+        });
+        s.Closed += reason => _ui.TryEnqueue(async () =>
         {
             if (_session != s) return; // we left on purpose
-            SessionText.Text = $"Disconnected ({reason})";
-            LeaveButton.Visibility = Visibility.Collapsed;
-            PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
-            _player.SetSpeed(1.0);
-            _session = null;
+            string? why = _fatalMessage;
+            await LeaveSessionAsync();
+            if (why is not null)
+            {
+                SessionText.Text = "Not in a screen";
+                ShowJoinMessage(char.ToUpperInvariant(why[0]) + why[1..] + ".");
+            }
+            else
+            {
+                SessionText.Text = $"Disconnected ({reason})";
+            }
         });
 
         OnItemChanged(s.CurrentItem);
         _announcePending = s.IsHost;
         TryAnnounceItem();
+
+        if (_opt.Panel is "viewers" or "roles")
+        {
+            ViewersToggle.IsChecked = true;
+            OnViewersToggle(this, new RoutedEventArgs());
+        }
+        if (_opt.Panel == "roles") OpenRolesPage(null);
+    }
+
+    /// <summary>Message from kick / ban / close, shown in the lobby once the connection drops.</summary>
+    private string? _fatalMessage;
+
+    /// <summary>Roles, co-host status or permissions changed: update everything that depends on them.</summary>
+    private void OnPermissionsChanged()
+    {
+        if (_session is not { } s) return;
+        PlayPauseButton.IsEnabled = s.Can(Permissions.PlaybackToggle);
+        SeekSlider.IsEnabled = s.Can(Permissions.PlaybackSeek);
+        RenderViewers();
+        if (_page == Page.Roles) RefreshRolesPage();
     }
 
     private async Task LeaveSessionAsync()
@@ -143,7 +182,10 @@ public sealed partial class MainWindow : Window
         await s.DisposeAsync();
         _player.SetSpeed(1.0);
         SessionText.Text = "Not in a screen";
-        LeaveButton.Visibility = Visibility.Collapsed;
+        LeaveButton.Visibility = ViewersToggle.Visibility = Visibility.Collapsed;
+        ViewersToggle.IsChecked = false;
+        SideColumn.Width = new GridLength(0);
+        if (_page == Page.Roles) ShowPage(Page.Video);
         PlayPauseButton.IsEnabled = SeekSlider.IsEnabled = true;
         OverlayTitle.Text = "Kino";
         OverlayText.Text = "Open a file or join a screen";
@@ -158,7 +200,10 @@ public sealed partial class MainWindow : Window
     private void UpdateSessionText()
     {
         if (_session is null) return;
-        string role = _session.IsHost ? "Host" : "Viewer";
+        string role = _session.IsHost ? "Host"
+            : _session.Self?.ActingHost == true ? "Acting host"
+            : _session.Self?.CoHost is not null ? "Co-host"
+            : "Viewer";
         int count = _session.Viewers.Count;
         string theatre = _sessionTheatre is null ? "" : $" · {_sessionTheatre.Name}";
         SessionText.Text = $"{_session.Joined!.Screen.Name}{theatre} · code {_session.Code} · {role} · {count} viewer{(count == 1 ? "" : "s")}";
@@ -166,15 +211,23 @@ public sealed partial class MainWindow : Window
 
     private void OnItemChanged(Item? item)
     {
-        if (_session is null || _session.IsHost || item is null) return;
+        if (_session is null || item is null || item.Name == _loadedFileName) return;
         OverlayTitle.Text = $"Host is playing: {item.Name}";
         if (_loadedFileName is null) OverlayText.Text = "Open your copy of this file";
     }
 
-    /// <summary>Host: once a file is loaded and its duration known, tell the screen about it.</summary>
+    /// <summary>
+    /// Once a file is loaded and its duration known, make it the screen's item, if allowed. Opening your own copy of
+    /// the current item (same name) just plays along and doesn't replace it.
+    /// </summary>
     private async void TryAnnounceItem()
     {
-        if (_session is null || !_session.IsHost || !_announcePending || _loadedFileName is null || !(_duration > 0)) return;
+        if (_session is null || !_announcePending || _loadedFileName is null || !(_duration > 0)) return;
+        if (!_session.Can(Permissions.PlaylistAdd) || _session.CurrentItem?.Name == _loadedFileName)
+        {
+            _announcePending = false;
+            return;
+        }
         _announcePending = false;
         await _session.LoadLocalAsync(_loadedFileName, Math.Round(_duration, 3));
         if (_opt.AutoPlay)
@@ -281,14 +334,15 @@ public sealed partial class MainWindow : Window
         else
         {
             _player.SetPaused(true); // the screen's anchor decides when to play
-            _announcePending = _session.IsHost;
+            _announcePending = true; // TryAnnounceItem checks permission and whether it's the current item
         }
     }
 
     private async void OnPlayPauseClick(object sender, RoutedEventArgs e)
     {
-        if (_session is { IsHost: true })
+        if (_session is not null)
         {
+            if (!_session.Can(Permissions.PlaybackToggle)) return;
             if (_session.Engine.Anchor?.IsPlaying == true) await _session.PauseAsync();
             else await _session.PlayAsync();
         }
@@ -306,12 +360,12 @@ public sealed partial class MainWindow : Window
     {
         _seekDragging = false;
         double to = SeekSlider.Value;
-        if (_session is { IsHost: true }) await _session.SeekAsync(to);
-        else if (_session is null) _player.SeekAbsolute(to);
+        if (_session is null) _player.SeekAbsolute(to);
+        else if (_session.Can(Permissions.PlaybackSeek)) await _session.SeekAsync(to);
     }
 
     private void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e) => _player?.SetVolume(e.NewValue);
 
     private void OnOverlayToggle(object sender, RoutedEventArgs e) =>
-        OverlayPopup.IsOpen = OverlayToggle.IsChecked == true && !_lobbyVisible;
+        OverlayPopup.IsOpen = OverlayToggle.IsChecked == true && _page == Page.Video;
 }
