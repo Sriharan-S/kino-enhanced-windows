@@ -14,7 +14,7 @@ public sealed partial record InviteLink(string TheatreId, string Code)
     public string AppLink => $"{Scheme}://join/{TheatreId}/{Code}";
     public string WebLink => $"{WebPage}#{TheatreId}/{Code}";
 
-    /// <summary>Parses an app link, a web link, or "theatre/code". Returns null for anything else.</summary>
+    /// <summary>Parses an app link, a web link (invite page or web app), or "theatre/code". Returns null for anything else.</summary>
     public static InviteLink? TryParse(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -28,7 +28,7 @@ public sealed partial record InviteLink(string TheatreId, string Code)
     public static string NormaliseCode(string code) =>
         code.Trim().ToUpperInvariant().Replace('I', '1').Replace('L', '1').Replace('O', '0');
 
-    [GeneratedRegex(@"^(?:kino://join/|https://[^/#?\s]+/join/?#|)(?<theatre>[a-zA-Z][a-zA-Z0-9-]{1,30})/(?<code>[0-9A-Za-z]{6})/?$")]
+    [GeneratedRegex(@"^(?:kino://join/|https://[^/#?\s]+/(?:join/?)?#|)(?<theatre>[a-zA-Z][a-zA-Z0-9-]{1,30})/(?<code>[0-9A-Za-z]{6})/?$")]
     private static partial Regex LinkPattern();
 
     [GeneratedRegex("^[0-9A-HJKMNP-TV-Z]{6}$")]

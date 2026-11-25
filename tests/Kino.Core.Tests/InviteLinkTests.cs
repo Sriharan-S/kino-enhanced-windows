@@ -7,6 +7,7 @@ public class InviteLinkTests
     [InlineData("kino://join/aurora/7K3QXM/")]
     [InlineData("https://kino-directory.srie.workers.dev/join#aurora/7K3QXM")]
     [InlineData("https://kino-directory.srie.workers.dev/join/#aurora/7k3qxm")]
+    [InlineData("https://kino-web.srie.workers.dev/#aurora/7K3QXM")] // web app link
     [InlineData("  aurora/7k3qxm  ")]
     public void Parses_app_web_and_short_forms(string text)
     {
